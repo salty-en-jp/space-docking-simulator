@@ -189,28 +189,44 @@ export function createShip() {
     g.add(s);
     return s;
   };
-  // 噴射口（加速したい向きと反対側から噴く）
-  const puffs = {
-    px: [mkPuff(-1.6, 0, 1.5), mkPuff(-1.6, 0, -1.5)],
-    nx: [mkPuff(1.6, 0, 1.5), mkPuff(1.6, 0, -1.5)],
-    py: [mkPuff(0, -1.2, 1.5), mkPuff(0, -1.2, -1.5)],
-    ny: [mkPuff(0, 1.2, 1.5), mkPuff(0, 1.2, -1.5)],
-    pz: [mkPuff(0.7, -0.1, -3.6), mkPuff(-0.7, -0.1, -3.6)],
-    nz: [mkPuff(1.1, 0.6, 3.2), mkPuff(-1.1, 0.6, 3.2)],
+  // RCSスラスタの配置（船のローカル座標: +X = 左舷, -X = 右舷, +Y = 上, +Z = 機首）
+  // ガスを噴いた側と反対向きに船が押される。
+  const T = {
+    leftFwd: mkPuff(1.65, 0, 1.6),   leftAft: mkPuff(1.65, 0, -1.6),
+    rightFwd: mkPuff(-1.65, 0, 1.6), rightAft: mkPuff(-1.65, 0, -1.6),
+    topFwd: mkPuff(0, 1.25, 1.6),    topAft: mkPuff(0, 1.25, -1.6),
+    botFwd: mkPuff(0, -1.25, 1.6),   botAft: mkPuff(0, -1.25, -1.6),
+    // ロール用（上下の角から横向きに噴く）
+    topLeft: mkPuff(1.55, 0.95, 0),  topRight: mkPuff(-1.55, 0.95, 0),
+    botLeft: mkPuff(1.55, -0.95, 0), botRight: mkPuff(-1.55, -0.95, 0),
+    aftL: mkPuff(0.7, -0.1, -3.7),   aftR: mkPuff(-0.7, -0.1, -3.7),
+    noseL: mkPuff(1.1, 0.6, 3.3),    noseR: mkPuff(-1.1, 0.6, 3.3),
   };
+  const fire = new Set();
   g.userData.setThrust = (accBody, angBody) => {
-    const th = 0.05;
-    const show = (arr, on) => arr.forEach((p) => {
-      p.visible = on;
-      if (on) p.scale.setScalar(0.6 + Math.random() * 0.6);
-    });
-    // 加速方向とは逆側の噴射口から出る
-    show(puffs.nx, accBody.x > th || Math.abs(angBody.y) > th);
-    show(puffs.px, accBody.x < -th || Math.abs(angBody.z) > th);
-    show(puffs.py, accBody.y > th || Math.abs(angBody.x) > th);
-    show(puffs.ny, accBody.y < -th);
-    show(puffs.pz, accBody.z > th);
-    show(puffs.nz, accBody.z < -th);
+    const th = 0.05, ta = 0.02;
+    fire.clear();
+    const on = (...names) => names.forEach((n) => fire.add(n));
+    // 並進: 進みたい向きと反対側から噴く
+    if (accBody.x > th) on('rightFwd', 'rightAft');        // 左へ
+    if (accBody.x < -th) on('leftFwd', 'leftAft');         // 右へ
+    if (accBody.y > th) on('botFwd', 'botAft');            // 上へ
+    if (accBody.y < -th) on('topFwd', 'topAft');           // 下へ
+    if (accBody.z > th) on('aftL', 'aftR');                // 前へ
+    if (accBody.z < -th) on('noseL', 'noseR');             // 後ろへ
+    // ヨー: +Y 軸まわり正 = 機首が左へ → 機首を左へ押す(右前で噴く)＋尾部を右へ押す(左後ろで噴く)
+    if (angBody.y > ta) on('rightFwd', 'leftAft');
+    if (angBody.y < -ta) on('leftFwd', 'rightAft');
+    // ピッチ: +X 軸まわり正 = 機首が下へ → 上前＋下後ろで噴く
+    if (angBody.x > ta) on('topFwd', 'botAft');
+    if (angBody.x < -ta) on('botFwd', 'topAft');
+    // ロール: +Z 軸まわり正 = 上面が右舷側へ → 上面は左舷側で噴く、下面は右舷側で噴く
+    if (angBody.z > ta) on('topLeft', 'botRight');
+    if (angBody.z < -ta) on('topRight', 'botLeft');
+    for (const [name, p] of Object.entries(T)) {
+      p.visible = fire.has(name);
+      if (p.visible) p.scale.setScalar(0.6 + Math.random() * 0.6);
+    }
   };
   return g;
 }

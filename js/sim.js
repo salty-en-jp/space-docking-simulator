@@ -289,6 +289,8 @@ export class Sim {
       latX: lat.dot(right),
       latY: lat.dot(u),
       latVec: lat,
+      vlatVec: vlat,
+      w: this.w.clone(),
       vlatX: vlat.dot(right),
       vlatY: vlat.dot(u),
       closing,

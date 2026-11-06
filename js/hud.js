@@ -117,7 +117,7 @@ export class HUD {
     const gx = this.w / 2;
     this.drawSpinGauge(c, gx - 170, gy, tm, tol);
     this.drawPhaseDial(c, gx + 20, gy, tm, tol);
-    this.drawLateralBox(c, gx + 120, gy, tm, tol);
+    this.drawLateralBox(c, gx + 110, gy, tm, tol);
 
     // ---- 右パネル（DOM、10Hz更新） ----
     const now = performance.now();
@@ -186,23 +186,63 @@ export class HUD {
     this.label(c, 'マーカー', x - 4, y - 23, ok ? OK : DIM);
   }
 
-  // 横ずれ表示: 軸に対する自船の位置（中央が軸）
+  // 横ずれ表示: 軸に対する自船の位置（中央が軸、上下左右は自船から見た向き）。
+  // 表示は自船と一緒に回る座標系なので、自船が回転していると点は渦を巻くように動く。
+  // その見かけの動きを、この先 PREDICT 秒の予測線として描く。
   drawLateralBox(c, x, y, tm, tol) {
-    const S = 44, cx = x + S / 2, cy = y + 5;
-    const scale = (S / 2) / Math.max(tol.lateral * 5, 2);
+    const S = 64, cx = x + S / 2, cy = y + 5;
+    // 中心付近は等倍、遠くは tanh で圧縮して枠内に収める
+    const R0 = Math.max(tol.lateral * 5, 2);
+    const map = (mx, my) => {
+      const r = Math.hypot(mx, my);
+      if (r < 1e-9) return [cx, cy];
+      const k = ((S / 2 - 3) * Math.tanh(r / R0)) / r;
+      return [cx + mx * k, cy - my * k];
+    };
     const ok = tm.lateral <= tol.lateral;
     c.strokeStyle = DIM;
     c.strokeRect(cx - S / 2, cy - S / 2, S, S);
     c.beginPath();
-    c.arc(cx, cy, tol.lateral * scale, 0, Math.PI * 2);
+    c.arc(cx, cy, (S / 2 - 3) * Math.tanh(tol.lateral / R0), 0, Math.PI * 2);
     c.stroke();
-    const clampv = (v) => Math.max(-S / 2, Math.min(S / 2, v));
-    const px = cx + clampv(tm.latX * scale), py = cy - clampv(tm.latY * scale);
-    c.fillStyle = ok ? OK : WARN;
-    c.beginPath(); c.arc(px, py, 3, 0, Math.PI * 2); c.fill();
-    // 横速度ベクトル
-    c.strokeStyle = c.fillStyle;
-    c.beginPath(); c.moveTo(px, py); c.lineTo(px + tm.vlatX * scale * 5, py - tm.vlatY * scale * 5); c.stroke();
-    this.label(c, '横ずれ', x, y - 23, ok ? OK : DIM);
+    c.beginPath();
+    c.moveTo(cx - 4, cy); c.lineTo(cx + 4, cy); c.moveTo(cx, cy - 4); c.lineTo(cx, cy + 4);
+    c.stroke();
+
+    // 予測: 慣性系では横ずれは直線的に変化し、表示の軸は自船の角速度で回る
+    const PREDICT = 3, N = 30;
+    const wl = tm.w.length();
+    const axis = wl > 1e-9 ? tm.w.clone().divideScalar(wl) : null;
+    const L = new THREE.Vector3(), R = new THREE.Vector3(), U = new THREE.Vector3(), q = new THREE.Quaternion();
+    const pts = [];
+    for (let i = 0; i <= N; i++) {
+      const tau = (i / N) * PREDICT;
+      L.copy(tm.latVec).addScaledVector(tm.vlatVec, tau);
+      R.copy(tm.right); U.copy(tm.u);
+      if (axis) { q.setFromAxisAngle(axis, wl * tau); R.applyQuaternion(q); U.applyQuaternion(q); }
+      pts.push(map(L.dot(R), L.dot(U)));
+    }
+    const col = ok ? OK : WARN;
+    c.save();
+    c.beginPath();
+    c.rect(cx - S / 2, cy - S / 2, S, S);
+    c.clip();
+    for (let i = 1; i < pts.length; i++) {
+      c.strokeStyle = col;
+      c.globalAlpha = 0.9 * (1 - i / pts.length) + 0.1;
+      c.beginPath(); c.moveTo(pts[i - 1][0], pts[i - 1][1]); c.lineTo(pts[i][0], pts[i][1]); c.stroke();
+    }
+    c.globalAlpha = 1;
+    // 1秒後の位置に小さな目印
+    const p1 = pts[Math.round(N / PREDICT)];
+    c.strokeStyle = col;
+    c.strokeRect(p1[0] - 2, p1[1] - 2, 4, 4);
+    c.restore();
+
+    // 現在位置
+    const [px, py] = map(tm.latX, tm.latY);
+    c.fillStyle = col;
+    c.beginPath(); c.arc(px, py, 3.5, 0, Math.PI * 2); c.fill();
+    this.label(c, '横ずれ（3秒予測）', x - 10, y - 34, ok ? OK : DIM);
   }
 }
