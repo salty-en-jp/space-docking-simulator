@@ -91,7 +91,7 @@ button:hover { filter: brightness(1.15); }
   #touch .pad { grid-template-columns: repeat(3, 46px); }
   #touch button { height: 46px; }
   /* 縦画面: 補助ボタンを上の段に横一列で */
-  #touch .pad.mid { order: -1; width: 100%; grid-template-columns: repeat(5, 1fr); }
+  #touch .pad.mid { order: -1; width: 100%; grid-template-columns: repeat(4, 1fr); }
   #touch .mid button { height: 36px; }
 }
 /* 横向きスマホ（高さが低い） */
@@ -105,7 +105,7 @@ button:hover { filter: brightness(1.15); }
   #touch { padding-left: calc(10px + env(safe-area-inset-left)); padding-right: calc(10px + env(safe-area-inset-right)); }
   #touch .pad { grid-template-columns: repeat(3, 44px); gap: 5px; }
   #touch button { height: 44px; font-size: 14px; }
-  #touch .pad.mid { order: 0; width: auto; grid-template-columns: repeat(5, auto); align-self: flex-end; }
+  #touch .pad.mid { order: 0; width: auto; grid-template-columns: repeat(4, auto); align-self: flex-end; }
   #touch .mid button { height: 34px; font-size: 12px; }
   .card { padding: 16px; }
   .logo { font-size: 36px; }

@@ -1,5 +1,5 @@
 import * as THREE from '../vendor/three.module.min.js';
-import { Sim, SCENARIOS, NOSE, PORT_Z, SPIN_LOCK_CAPTURE_RPM } from './sim.js';
+import { Sim, SCENARIOS, PORT_Z, SPIN_LOCK_CAPTURE_RPM } from './sim.js';
 import { Autopilot } from './autopilot.js';
 import { createStation, createShip, createStars, createPlanet } from './models.js';
 import { HUD } from './hud.js';
@@ -93,7 +93,7 @@ function saveBest(id, score, rank) {
 function buildMissionList() {
   const box = $('missions');
   box.innerHTML = '';
-  const stars = { training: '★☆☆☆', standard: '★★☆☆', advanced: '★★★☆', extreme: '★★★★' };
+  const stars = { training: '★☆☆☆', standard: '★★☆☆', advanced: '★★★☆', extreme: '★★★★', dorsal: '★★☆☆', dorsalx: '★★★★' };
   for (const sc of Object.values(SCENARIOS)) {
     const b = document.createElement('button');
     b.className = 'mission';
@@ -125,6 +125,7 @@ function show(id, on) { $(id).classList.toggle('hidden', !on); }
 function startMission(id, demo) {
   audio.start();
   sim = new Sim(SCENARIOS[id]);
+  ship.userData.setDockType(sim.dockType);
   isDemo = demo;
   autopilot = demo ? new Autopilot() : null;
   usedAuto = demo;
@@ -151,6 +152,7 @@ function updateBadges() {
   b.push(`<span class="opt">${CAM_NAMES[camMode]}</span>`);
   b.push(`<span class="opt">SAS ${inputState.sas ? 'ON' : 'OFF'}</span>`);
   b.push(`<span class="${inputState.spinLock ? 'lock' : 'opt'}">回転ロック ${inputState.spinLock ? 'ON' : 'OFF'}</span>`);
+  if (sim.dockType === 'top') b.push(`<span class="${inputState.bodyFrame ? 'auto' : 'opt'}">操作: ${inputState.bodyFrame ? '機体基準' : 'ポート基準'}</span>`);
   if (autopilot) b.push('<span class="auto">AUTO</span>');
   const lockBtn = document.querySelector('#touch [data-key="KeyL"]');
   if (lockBtn) lockBtn.classList.toggle('on', inputState.spinLock);
@@ -173,6 +175,7 @@ function toTitle() {
   show('title', true);
   // 背景用に限界ミッションをデモ飛行させておく
   sim = new Sim(SCENARIOS.extreme);
+  ship.userData.setDockType(sim.dockType);
   autopilot = new Autopilot();
   camMode = 2;
 }
@@ -225,6 +228,12 @@ onKey('KeyL', () => {
   updateBadges();
   if (mode === 'play') flash(inputState.spinLock ? `回転ロック ON（回転差 ${SPIN_LOCK_CAPTURE_RPM} rpm 以内で作動）` : '回転ロック OFF', '', 1800);
 });
+onKey('KeyV', () => {
+  if (mode !== 'play' || sim.dockType !== 'top') return;
+  inputState.bodyFrame = !inputState.bodyFrame;
+  updateBadges();
+  flash(inputState.bodyFrame ? '操作: 機体基準（W で機首方向、→ でステーションと同じ向きに回転）' : '操作: ポート基準（W でポート方向、Q/E で回転）', 'warn', 2500);
+});
 onKey('KeyM', () => { audio.start(); audio.setMusic(!audio.musicOn); updateBadges(); });
 onKey('KeyZ', () => {
   if (mode !== 'play') return;
@@ -247,15 +256,18 @@ $('btn-menu2').onclick = toTitle;
 const camPos = new THREE.Vector3();
 const camLook = new THREE.Vector3();
 function updateCamera() {
-  const f = sim.forward(), u = sim.up();
+  // f: ドッキングポートの向き、u: その画面上方向（機首ポートなら機首と上面、上部ポートなら上面と機首）
+  const f = sim.dockDir(), u = sim.dockUp();
   ship.visible = true;
   if (camMode === 0) {
     // 船の少し上・後ろから機首方向と平行に見る（船は画面下寄り、ポートは中央）
-    camPos.copy(sim.pos).addScaledVector(u, 6).addScaledVector(f, -14);
+    // 上部ポートは機体が横たわって視界をふさぐので、少し遠めから
+    const top = sim.dockType === 'top';
+    camPos.copy(sim.pos).addScaledVector(u, top ? 8 : 6).addScaledVector(f, top ? -17 : -14);
     camLook.copy(camPos).addScaledVector(f, 40);
     camera.up.copy(u);
   } else if (camMode === 1) {
-    camPos.copy(sim.pos).addScaledVector(f, NOSE + 0.3).addScaledVector(u, 0.35);
+    camPos.copy(sim.dockPoint()).addScaledVector(f, 0.3).addScaledVector(u, 0.35);
     camLook.copy(camPos).addScaledVector(f, 10);
     camera.up.copy(u);
     ship.visible = false;
@@ -362,7 +374,7 @@ function frame(now) {
   renderer.render(scene, camera);
   const touchEl = $('touch');
   const touchTop = isTouch && !touchEl.classList.contains('hidden') ? touchEl.getBoundingClientRect().top : innerHeight;
-  hud.draw(sim, tm, camera, { visible: mode === 'play' || mode === 'paused', bottom: touchTop });
+  hud.draw(sim, tm, camera, { visible: mode === 'play' || mode === 'paused', bottom: touchTop, spinKeys: sim.spinKeys(inputState.bodyFrame) });
 
   // 音
   const tension = sim.status === 'flying' ? Math.min(1, Math.max(0, 1 - tm.axial / 60)) * 0.7 + (sim.sc.timeLimit ? 0.3 : 0) : sim.status === 'docked' ? 0 : 0.2;

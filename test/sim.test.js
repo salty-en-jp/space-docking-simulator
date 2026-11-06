@@ -1,5 +1,6 @@
 // オートパイロットで全ミッションがクリア可能かを確認するヘッドレステスト
-import { Sim, SCENARIOS, RPM } from '../js/sim.js';
+import * as THREE from '../vendor/three.module.min.js';
+import { Sim, SCENARIOS, RPM, DEG } from '../js/sim.js';
 import { Autopilot } from '../js/autopilot.js';
 
 const DT = 1 / 120;
@@ -42,5 +43,49 @@ for (const id of ['advanced', 'extreme']) {
   m.w.copy(m.axis(0)).multiplyScalar(m.omega);
   m.step(1 / 120, idle({ spinLock: true, rz: -1 }));
   check(`manual roll overrides lock (${id})`, m.spinLockState === 'manual', `state=${m.spinLockState}`);
+}
+
+// ---- 救済ボタン ----
+for (const id of ['extreme', 'dorsalx']) {
+  // 回転停止: でたらめに回っている船が止まる
+  const s = new Sim(SCENARIOS[id]);
+  s.w.set(0.4, -0.3, 2.5);
+  let t = 0;
+  while (s.w.length() > 0.005 && t < 20) { s.step(1 / 120, idle({ rotStop: true })); t += 1 / 120; }
+  check(`rotation stop (${id})`, s.w.length() <= 0.005 && !s.usedAssist, `stopped in ${t.toFixed(1)}s, |w|=${s.w.length().toFixed(4)}`);
+
+  // 姿勢復帰: 回転を合わせたまま 20° ずれた向きを、回転を保ったまま軸に戻す
+  const r = new Sim(SCENARIOS[id]);
+  const a = r.axis(0);
+  const tilt = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 20 * DEG);
+  r.q.premultiply(tilt);
+  r.w.copy(a).multiplyScalar(r.omega);
+  const before = r.telemetry().align;
+  let worstSpin = 0;
+  for (let i = 0; i < 120 * 20; i++) { r.step(1 / 120, idle({ realign: true })); worstSpin = Math.max(worstSpin, Math.abs(r.telemetry().dSpinRpm)); }
+  const after = r.telemetry();
+  check(`realign (${id})`, after.align < 1 && after.rateDeg < 1 && r.usedAssist,
+    `align ${before.toFixed(1)}° -> ${after.align.toFixed(2)}°, spin kept within ${worstSpin.toFixed(2)} rpm, rate ${after.rateDeg.toFixed(2)}°/s`);
+}
+
+// ---- 上部ポート: 操作基準 ----
+{
+  const s = new Sim(SCENARIOS.dorsal);
+  const f = s.dockDir(), nose = new THREE.Vector3(0, 0, 1).applyQuaternion(s.q);
+  s.step(1 / 120, idle({ tz: 1 }));
+  const accPort = s.accBody.clone().applyQuaternion(s.q).normalize();
+  const s2 = new Sim(SCENARIOS.dorsal);
+  s2.step(1 / 120, idle({ tz: 1, bodyFrame: true }));
+  const accBody = s2.accBody.clone().applyQuaternion(s2.q).normalize();
+  check('top port: W moves toward port in port frame', accPort.dot(f) > 0.99, `dot=${accPort.dot(f).toFixed(3)}`);
+  check('top port: W moves toward nose in body frame', accBody.dot(nose) > 0.99, `dot=${accBody.dot(nose).toFixed(3)}`);
+  // ポート基準の Q はステーションと同じ向きへ回す
+  const s3 = new Sim(SCENARIOS.dorsal);
+  s3.step(1 / 120, idle({ rz: -1 }));
+  check('top port: Q spins with station', s3.w.dot(s3.axis(s3.t)) > 0.002, `w·a=${s3.w.dot(s3.axis(s3.t)).toFixed(4)}`);
+  // 機体基準では → がステーションと同じ向き
+  const s4 = new Sim(SCENARIOS.dorsal);
+  s4.step(1 / 120, idle({ ry: 1, bodyFrame: true }));
+  check('top port body frame: → spins with station', s4.w.dot(s4.axis(s4.t)) > 0.002 && s4.spinKeys(true)[0] === '→', `w·a=${s4.w.dot(s4.axis(s4.t)).toFixed(4)}`);
 }
 process.exit(failed ? 1 : 0);

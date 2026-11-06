@@ -8,6 +8,18 @@ export const PORT_CAPTURE_R = 3.0; // ポートが船を受け止められる半
 export const RING_R = 40;          // 居住リングの半径
 export const NOSE = 3.2;           // 船の重心からドッキングカラーまでの距離
 
+export const TOP_PORT_H = 1.15;    // 上部ポート: 重心からドッキングリング面までの高さ
+
+const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+// 船のドッキングポートの種類（機体座標）。F: ポートの向き、U: 画面上で「上」とする向き（マーカーと合わせる側）
+export const DOCK_TYPES = {
+  nose: { name: '機首ポート', local: V3(0, 0, NOSE), F: V3(0, 0, 1), U: V3(0, 1, 0) },
+  top: { name: '上部ポート', local: V3(0, TOP_PORT_H, 0), // 重心の真上（ずれていると回転中にポートが円を描く）
+        F: V3(0, 1, 0), U: V3(0, 0, 1) },
+};
+// 機体基準の操作軸（従来の操作）: 右 = -X, 上 = +Y, 前 = +Z
+const BODY_FRAME = { R: V3(-1, 0, 0), U: V3(0, 1, 0), F: V3(0, 0, 1) };
+
 export const LIN_ACC = 0.5;        // 並進スラスタ加速度 [m/s^2]
 export const PY_ACC = 0.35;        // ピッチ/ヨー角加速度 [rad/s^2]
 export const ROLL_ACC = 1.0;       // ロール角加速度 [rad/s^2]
@@ -83,6 +95,40 @@ export const SCENARIOS = {
     start: { dist: 90, lateral: [6, 4], misalignDeg: 10, drift: [0.06, -0.05, -0.4] },
     tol: { closing: 0.35, lateral: 0.4, align: 3, spin: 0.6, phase: 8, rate: 1.5 },
   },
+  dorsal: {
+    id: 'dorsal',
+    name: '上部ポート',
+    title: 'MISSION 05 ／ 上部ポート',
+    briefing:
+      '改修型〈ケストレル〉は、ドッキングポートが機体の上面にある。毎分6回転のステーションに、上面のポートを向けて結合せよ。' +
+      '操作はポート基準（W でポートの方向へ進む）。V キーで機体基準に切り替えられる。',
+    dock: 'top',
+    spinRpm: 6,
+    rollAcc: 0.3,
+    wobbleDeg: 0,
+    wobblePeriod: 60,
+    timeLimit: 0,
+    fuel: 110,
+    start: { dist: 60, lateral: [4, -3], misalignDeg: 8, drift: [0.04, -0.03, -0.25] },
+    tol: { closing: 0.4, lateral: 0.45, align: 3.5, spin: 0.6, phase: 9, rate: 1.5 },
+  },
+  dorsalx: {
+    id: 'dorsalx',
+    name: '母船',
+    title: 'MISSION 06 ／ 母船への帰還',
+    briefing:
+      '損傷した母船〈ハルシオン〉は毎分30回転で回りながら、軸もぶれて大気圏へ落ちていく。' +
+      '上面のポートで結合し、乗員を移せ。残り5分。',
+    dock: 'top',
+    spinRpm: 30,
+    rollAcc: 0.9,
+    wobbleDeg: 0.8,
+    wobblePeriod: 45,
+    timeLimit: 300,
+    fuel: 90,
+    start: { dist: 90, lateral: [-6, 4], misalignDeg: 12, drift: [-0.05, 0.05, -0.4] },
+    tol: { closing: 0.35, lateral: 0.4, align: 3, spin: 0.6, phase: 8, rate: 1.5 },
+  },
 };
 
 const X = new THREE.Vector3(1, 0, 0);
@@ -97,6 +143,13 @@ export function quatFromForwardUp(f, upHint) {
   const y = new THREE.Vector3().crossVectors(z, x).normalize();
   const m = new THREE.Matrix4().makeBasis(x, y, z);
   return new THREE.Quaternion().setFromRotationMatrix(m);
+}
+
+// 機体ベクトル bF→wF、bU→（wUhint を wF に直交化した向き）へ移す回転
+export function quatAligning(bF, bU, wF, wUhint) {
+  const qb = quatFromForwardUp(bF, bU);
+  const qw = quatFromForwardUp(wF, wUhint);
+  return qw.multiply(qb.invert());
 }
 
 // a に垂直な単位ベクトル v の、a まわりの符号付き角度（from → to）
@@ -117,6 +170,8 @@ export class Sim {
   constructor(scenario) {
     this.sc = scenario;
     this.omega = scenario.spinRpm * RPM;
+    this.dockType = scenario.dock || 'nose';
+    this.dock = DOCK_TYPES[this.dockType];
     this.reset();
   }
 
@@ -141,11 +196,11 @@ export class Sim {
     const e1 = Y.clone().addScaledVector(a, -Y.dot(a)).normalize();
     const e2 = new THREE.Vector3().crossVectors(a, e1);
     this.pos = P.clone()
-      .addScaledVector(a, s.dist + NOSE)
+      .addScaledVector(a, s.dist + this.dock.local.dot(this.dock.F))
       .addScaledVector(e2, s.lateral[0])
       .addScaledVector(e1, s.lateral[1]);
     const f = a.clone().negate().applyAxisAngle(e1, s.misalignDeg * DEG);
-    this.q = quatFromForwardUp(f, e1);
+    this.q = quatAligning(this.dock.F, this.dock.U, f, e1);
     this.vel = new THREE.Vector3(...s.drift);
     this.w = new THREE.Vector3(0.004, -0.006, 0.01);
     this.prevNoseZ = Infinity;
@@ -189,8 +244,31 @@ export class Sim {
   up() {
     return Y.clone().applyQuaternion(this.q);
   }
+  // ドッキングポートの向き・画面上方向・位置（ワールド座標）
+  dockDir() {
+    return this.dock.F.clone().applyQuaternion(this.q);
+  }
+  dockUp() {
+    return this.dock.U.clone().applyQuaternion(this.q);
+  }
+  dockPoint() {
+    return this.pos.clone().add(this.dock.local.clone().applyQuaternion(this.q));
+  }
   nosePos() {
-    return this.pos.clone().addScaledVector(this.forward(), NOSE);
+    return this.dockPoint();
+  }
+
+  // 操作軸（機体座標）と、それぞれの角加速度の上限
+  // ポート基準: W/S がポート方向、Q/E がポート軸まわりの回転。機体基準: 従来どおり機首基準。
+  controlAxes(bodyFrame) {
+    const fr = bodyFrame ? BODY_FRAME : { F: this.dock.F, U: this.dock.U, R: new THREE.Vector3().crossVectors(this.dock.F, this.dock.U) };
+    const auth = (v) => (Math.abs(v.dot(this.dock.F)) > 0.9 ? this.rollAcc() : PY_ACC);
+    return { R: fr.R, U: fr.U, F: fr.F, aR: auth(fr.R), aU: auth(fr.U), aF: auth(fr.F) };
+  }
+  // 回転差・マーカーを合わせるキー [ステーションと同じ向きへ回すキー, 逆向きのキー]
+  spinKeys(bodyFrame) {
+    if (!bodyFrame || this.dockType === 'nose') return ['Q', 'E'];
+    return ['→', '←']; // 上部ポートを機体基準で操作するときはヨーで回る
   }
 
   // ---- 1ステップ進める ----
@@ -212,19 +290,44 @@ export class Sim {
     const pyA = PY_ACC * (c.fine ? 0.15 : 1);
     const rlA = this.rollAcc() * (c.fine ? 0.1 : 1);
 
-    const accB = new THREE.Vector3(-c.tx * linA, c.ty * linA, c.tz * linA);
-    const angB = new THREE.Vector3(-c.rx * pyA, -c.ry * pyA, c.rz * rlA);
+    const ax = this.controlAxes(c.bodyFrame);
+    const authOf = (v) => (Math.abs(v.dot(this.dock.F)) > 0.9 ? rlA : pyA);
+    const accB = new THREE.Vector3()
+      .addScaledVector(ax.R, c.tx * linA)
+      .addScaledVector(ax.U, c.ty * linA)
+      .addScaledVector(ax.F, c.tz * linA);
+    const angB = new THREE.Vector3()
+      .addScaledVector(ax.R, c.rx * authOf(ax.R))
+      .addScaledVector(ax.U, -c.ry * authOf(ax.U))
+      .addScaledVector(ax.F, c.rz * authOf(ax.F));
     if (!hasFuel) {
       accB.set(0, 0, 0);
       angB.set(0, 0, 0);
     }
     const acc = accB.clone().applyQuaternion(this.q);
     const ang = angB.clone().applyQuaternion(this.q);
+    // ステーション軸まわりの回転を手動で操作中か（入力の大半が軸まわり成分）
+    const manualSpin = ang.length() > 1e-4 && Math.abs(ang.dot(a)) > 0.5 * ang.length();
+    const D = this.dockDir();
 
-    // SAS: ピッチ/ヨー方向の回転を止める（ロールは止めない）
-    if (c.sas && hasFuel && Math.abs(c.rx) < 0.01 && Math.abs(c.ry) < 0.01) {
-      const f = this.forward();
-      const wperp = this.w.clone().addScaledVector(f, -this.w.dot(f));
+    if (c.rotStop && hasFuel) {
+      // 回転停止: すべての回転を止める（ポート軸まわりは強め、他は通常の上限）
+      const want = this.w.clone().multiplyScalar(-3);
+      const along = want.dot(D);
+      const perp = want.clone().addScaledVector(D, -along);
+      ang.add(clampLen(perp, PY_ACC)).addScaledVector(D, Math.max(-this.rollAcc(), Math.min(this.rollAcc(), along)));
+    } else if (c.realign && hasFuel) {
+      // 姿勢復帰: ステーション軸まわりの回転は保ったまま、ポートの向きを軸に合わせる
+      const target = a.clone().negate();
+      const e = new THREE.Vector3().crossVectors(D, target);
+      const angle = Math.atan2(e.length(), D.dot(target));
+      const wDes = e.lengthSq() > 1e-12 ? e.normalize().multiplyScalar(Math.min(0.6 * angle, 0.25)) : new THREE.Vector3();
+      const wPerp = this.w.clone().addScaledVector(a, -this.w.dot(a));
+      ang.add(clampLen(wDes.sub(wPerp).multiplyScalar(3), PY_ACC));
+      this.usedAssist = true;
+    } else if (c.sas && hasFuel && Math.abs(c.rx) < 0.01 && Math.abs(c.ry) < 0.01) {
+      // SAS: ポート軸以外の回転（首振り）を止める。ポート軸まわりの回転は止めない
+      const wperp = this.w.clone().addScaledVector(D, -this.w.dot(D));
       ang.add(clampLen(wperp.multiplyScalar(-2.5), PY_ACC));
     }
     // 横ずれ速度キャンセル（ポートに対する横方向の相対速度を打ち消す）
@@ -238,7 +341,7 @@ export class Sim {
     this.spinLockState = 'off';
     if (c.spinLock) {
       const err = this.omega - this.w.dot(a);
-      if (Math.abs(c.rz) > 0.01) {
+      if (manualSpin || c.rotStop) {
         this.spinLockState = 'manual';
       } else if (hasFuel && Math.abs(err) < SPIN_LOCK_CAPTURE_RPM * RPM) {
         const lim = this.rollAcc();
@@ -303,10 +406,11 @@ export class Sim {
     const a = this.axis(t);
     const P = this.portPos(t);
     const vP = this.portVel(t);
-    const f = this.forward();
-    const u = this.up();
-    const right = new THREE.Vector3(-1, 0, 0).applyQuaternion(this.q);
-    const nose = this.nosePos();
+    // 以下 f/u/nose は「ドッキングポートの向き・画面上方向・位置」
+    const f = this.dockDir();
+    const u = this.dockUp();
+    const right = new THREE.Vector3().crossVectors(f, u);
+    const nose = this.dockPoint();
     const d = nose.clone().sub(P);
     const axial = d.dot(a);
     const lat = d.clone().addScaledVector(a, -axial);
@@ -364,7 +468,7 @@ export class Sim {
       return;
     }
     if (checks.every((c) => c.ok)) {
-      this.dock(tm, checks);
+      this.completeDocking(tm, checks);
       return;
     }
     // 弾かれる
@@ -386,7 +490,7 @@ export class Sim {
     }
   }
 
-  dock(tm, checks) {
+  completeDocking(tm, checks) {
     this.status = 'docked';
     const Sq = this.stationQuat(this.t);
     const Si = Sq.clone().invert();

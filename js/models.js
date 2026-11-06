@@ -178,6 +178,28 @@ export function createShip() {
   tick.position.set(0, 0.88, 0.9);
   g.add(tick);
 
+  // 上部ドッキングポート（上部ポートのミッションでだけ表示。重心の真上）
+  const topPort = new THREE.Group();
+  const adapter = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 1.05, 0.3, 20), white);
+  adapter.position.y = 0.95;
+  topPort.add(adapter);
+  const topRing = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.16, 8, 28), dark);
+  topRing.rotation.x = Math.PI / 2;
+  topRing.position.y = 1.1;
+  topPort.add(topRing);
+  // 機首側を示すオレンジの目印（ステーションのマーカーと合わせる側）
+  const topTick = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.06, 0.7), glow(0xff8a1f));
+  topTick.position.set(0, 1.12, 1.35);
+  topPort.add(topTick);
+  topPort.visible = false;
+  g.add(topPort);
+  g.userData.setDockType = (type) => {
+    const top = type === 'top';
+    topPort.visible = top;
+    fin.visible = !top;   // 上面が結合面になるので垂直尾翼は無し
+    tick.visible = !top;
+  };
+
   // RCS噴射エフェクト
   const puffTex = makePuffTexture();
   const puffMat = new THREE.SpriteMaterial({ map: puffTex, color: 0xcfe6ff, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });

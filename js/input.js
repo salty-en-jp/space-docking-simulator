@@ -1,6 +1,6 @@
 // キーボード／タッチ入力 → 操作量
 const held = new Set();
-const toggles = { sas: true, spinLock: false };
+const toggles = { sas: true, spinLock: false, bodyFrame: false };
 const listeners = {};
 
 export function onKey(code, fn) {
@@ -56,6 +56,9 @@ export function readControls() {
     sas: toggles.sas,
     killRel: held.has('KeyX'),
     spinLock: toggles.spinLock,
+    rotStop: held.has('KeyB'),
+    realign: held.has('KeyG'),
+    bodyFrame: toggles.bodyFrame,
   };
 }
 

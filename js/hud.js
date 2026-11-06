@@ -135,9 +135,10 @@ export class HUD {
       this.setRow('target', `${f1(tm.targetRpm)} rpm ↺`);
       this.setRow('ship', `${f1(tm.shipRpm)} rpm`);
       const ds = tm.dSpinRpm;
-      this.setRow('spin', `${ds >= 0 ? '+' : ''}${f2(ds)} rpm ${Math.abs(ds) > tol.spin ? (ds < 0 ? '［Q］' : '［E］') : ''}`, lvl(Math.abs(ds), tol.spin));
+      const [kPlus, kMinus] = opts.spinKeys || ['Q', 'E'];
+      this.setRow('spin', `${ds >= 0 ? '+' : ''}${f2(ds)} rpm ${Math.abs(ds) > tol.spin ? (ds < 0 ? `［${kPlus}］` : `［${kMinus}］`) : ''}`, lvl(Math.abs(ds), tol.spin));
       const ph = tm.phase;
-      this.setRow('phase', `${ph >= 0 ? '+' : ''}${f1(ph)}° ${Math.abs(ph) > tol.phase ? (ph > 0 ? '［Q］' : '［E］') : ''}`, lvl(Math.abs(ph), tol.phase));
+      this.setRow('phase', `${ph >= 0 ? '+' : ''}${f1(ph)}° ${Math.abs(ph) > tol.phase ? (ph > 0 ? `［${kPlus}］` : `［${kMinus}］`) : ''}`, lvl(Math.abs(ph), tol.phase));
       this.setRow('rate', `${f1(tm.rateDeg)}°/s`, lvl(tm.rateDeg, tol.rate));
       this.setRow('fuel', `${Math.round(tm.fuel * 100)} %`, tm.fuel > 0.3 ? 'ok' : tm.fuel > 0.1 ? 'warn' : 'bad');
       this.setRow('hull', `${Math.round(tm.hull * 100)} %`, tm.hull > 0.7 ? 'ok' : tm.hull > 0.35 ? 'warn' : 'bad');
