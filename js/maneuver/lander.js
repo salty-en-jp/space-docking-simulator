@@ -15,6 +15,22 @@ export const LIMITS = { vy: 3.0, vh: 2.0, tiltDeg: 10 };
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
+// レーダー表示用: 自船から見た水平方向の位置・向き（m）。画面の向きに合わせて [右, 下] で返す。
+// 画面の上 = 前方 = -z なので、[x, z] をそのまま [右, 下] として使える。
+export function radarOffsets(l) {
+  const [x, , z] = l.pos;
+  const [vx, vy, vz] = l.vel;
+  const [ux, , uz] = l.up();
+  // 今の速度のまま降りたときの着地点（加速度は無視した目安）
+  const t = vy < -0.3 ? l.alt() / -vy : null;
+  return {
+    pad: [-x, -z],
+    vel: [vx, vz],
+    landing: t !== null ? [vx * t, vz * t] : null,
+    push: [ux, uz], // 機体の傾きで推力が水平に押す向き（大きさは傾きの sin）
+  };
+}
+
 export class LanderSim {
   constructor({ fuel }) {
     this.pos = [-160, 520, 200];
@@ -60,6 +76,9 @@ export class LanderSim {
 
     // 姿勢: 入力で傾け、離すと水平に戻る
     const want = [ctl.tx * TILT_MAX, ctl.tz * TILT_MAX];
+    // 斜めに傾けても合計が TILT_MAX を超えないようにする
+    const wl = Math.hypot(want[0], want[1]);
+    if (wl > TILT_MAX) { want[0] *= TILT_MAX / wl; want[1] *= TILT_MAX / wl; }
     for (let i = 0; i < 2; i++) {
       const d = want[i] - this.tilt[i];
       this.tilt[i] += clamp(d, -TILT_RATE * dt, TILT_RATE * dt);

@@ -313,7 +313,7 @@ export class Maneuver {
       const bottom = !touch.classList.contains('hidden') ? touch.getBoundingClientRect().top : this.h;
       const top = $('mclock').getBoundingClientRect().bottom + 30;
       // 縦長の画面ではレーダーを右上へ（下は案内とボタンで埋まる）
-      const radarY = this.w < 720 ? top + 90 : Math.min(bottom - 80, this.h - 90);
+      const radarY = this.w < 720 ? top + 90 : Math.min(bottom - 110, this.h - 110); // 下に凡例3行ぶん
       this.landerView.drawHud(c, this.w, this.h, this.lander, { top, radarY, hold: this.holdOn, bannerY: top + 10 });
     }
   }

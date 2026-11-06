@@ -3,6 +3,7 @@ import { dilationAt, kerrUt, R_KERR_PLANET, TARGET_FACTOR, iscoRadius } from '..
 import { R_PLANET, R_MOTHER, REAL_SEC_PER_UNIT } from '../js/maneuver/orbit.js';
 import { createOutbound, createLanding, createReturn, landerClockTick, formatShipTime, formatOutside } from '../js/maneuver/mission.js';
 import { OrbitGuide, LanderGuide } from '../js/maneuver/guidance.js';
+import { LanderSim, radarOffsets } from '../js/maneuver/lander.js';
 
 let failed = 0;
 const check = (name, cond, detail) => { console.log(`${cond ? 'PASS' : 'FAIL'} ${name}: ${detail}`); if (!cond) failed++; };
@@ -12,6 +13,23 @@ check('planet orbit: 1 hour = 7 years', Math.abs(dilationAt(R_PLANET) / TARGET_F
 check('planet orbit is outside ISCO', R_KERR_PLANET > iscoRadius(), `r=${R_KERR_PLANET} isco=${iscoRadius()}`);
 check('mothership barely dilated', dilationAt(R_MOTHER) < 1.1, `×${dilationAt(R_MOTHER).toFixed(3)}`);
 check('Schwarzschild-like limit sanity (r=10, a≈1)', Math.abs(kerrUt(10) - 1.181) < 0.01, `u^t=${kerrUt(10).toFixed(3)}`);
+
+// ---- 着陸レーダーの向き（画面: 右 = +, 下 = +, 上 = 前方） ----
+{
+  const l = new LanderSim({ fuel: 100 });
+  l.pos = [0, 200, 100]; l.vel = [0, -10, -5]; // パッドは前方100m、前へ進んでいる
+  let ro = radarOffsets(l);
+  check('radar: pad ahead is drawn up', ro.pad[1] < 0 && Math.abs(ro.pad[0]) < 1e-9, `pad=${ro.pad}`);
+  check('radar: moving toward pad points the same way', ro.vel[1] < 0, `vel=${ro.vel}`);
+  check('radar: predicted landing ahead', ro.landing && ro.landing[1] < 0, `landing=${ro.landing}`);
+  l.pos = [50, 200, 0];
+  ro = radarOffsets(l);
+  check('radar: pad to the left is drawn left', ro.pad[0] < 0, `pad=${ro.pad}`);
+  // 前へ傾けると推力は前方（画面の上）を押し、右へ傾けると右を押す
+  for (let i = 0; i < 60; i++) l.step(1 / 60, { thrust: 1, tx: 1, tz: 1, hold: false });
+  ro = radarOffsets(l);
+  check('radar: tilt forward+right pushes up+right', ro.push[0] > 0 && ro.push[1] < 0, `push=${ro.push.map((v) => v.toFixed(2))}`);
+}
 
 // ---- ミッション全体 ----
 const dtReal = 1 / 60;

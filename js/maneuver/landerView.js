@@ -1,7 +1,7 @@
 // 着陸パートの3D表示と計器
 import * as THREE from '../../vendor/three.module.min.js';
 import { createShip, createStars } from '../models.js';
-import { PAD_R, LIMITS, ASCENT_ALT, ASCENT_VY, COLLECT_SEC } from './lander.js';
+import { PAD_R, LIMITS, ASCENT_ALT, ASCENT_VY, COLLECT_SEC, radarOffsets } from './lander.js';
 
 const OK = '#7CFFB2', WARN = '#FFB347', BAD = '#FF5C5C', DIM = 'rgba(124,255,178,0.4)';
 
@@ -195,21 +195,49 @@ export class LanderView {
     const R = 56, rx = w - R - 20, ry = opts.radarY;
     c.strokeStyle = DIM;
     c.beginPath(); c.arc(rx, ry, R, 0, Math.PI * 2); c.stroke();
+    // 自船を中心に、真上から見た図（画面の上 = 前方）
+    const ro = radarOffsets(l);
     const range = Math.max(80, Math.min(600, l.padDist() * 1.3));
     const sc = R / range;
-    c.beginPath(); c.arc(rx, ry, PAD_R * sc, 0, Math.PI * 2); c.stroke();
-    // 自船を中心に、パッドの相対位置を描く（上が前方 = -z）
-    const px = rx - l.pos[0] * sc, py = ry + l.pos[2] * sc;
-    const clampR = (dx, dy) => { const d = Math.hypot(dx, dy); return d > R ? [dx * R / d, dy * R / d] : [dx, dy]; };
-    const [pdx, pdy] = clampR(px - rx, py - ry);
+    const clampR = ([dx, dy]) => { const d = Math.hypot(dx, dy); return d > R ? [dx * R / d, dy * R / d] : [dx, dy]; };
+    // パッド（緑の点と、パッドの大きさの円）
+    const [pdx, pdy] = clampR([ro.pad[0] * sc, ro.pad[1] * sc]);
+    c.strokeStyle = 'rgba(124,255,178,0.6)';
+    c.beginPath(); c.arc(rx + pdx, ry + pdy, Math.max(4, PAD_R * sc), 0, Math.PI * 2); c.stroke();
     c.fillStyle = OK;
-    c.beginPath(); c.arc(rx + pdx, ry + pdy, 5, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.arc(rx + pdx, ry + pdy, 4, 0, Math.PI * 2); c.fill();
+    // 予測着地点（○）
+    if (ro.landing && l.phase === 'descent') {
+      const [ldx, ldy] = clampR([ro.landing[0] * sc, ro.landing[1] * sc]);
+      const onPad = Math.hypot(ro.landing[0] - ro.pad[0], ro.landing[1] - ro.pad[1]) <= PAD_R;
+      c.strokeStyle = onPad ? OK : WARN;
+      c.lineWidth = 2;
+      c.beginPath(); c.arc(rx + ldx, ry + ldy, 6, 0, Math.PI * 2); c.stroke();
+      c.lineWidth = 1.5;
+    }
+    // 進んでいる向き（オレンジ線、4秒分）
     c.strokeStyle = WARN;
-    c.beginPath(); c.moveTo(rx, ry); c.lineTo(rx + l.vel[0] * sc * 4, ry + l.vel[2] * sc * 4); c.stroke();
+    const [vdx, vdy] = clampR([ro.vel[0] * sc * 4, ro.vel[1] * sc * 4]);
+    c.beginPath(); c.moveTo(rx, ry); c.lineTo(rx + vdx, ry + vdy); c.stroke();
+    // 傾きで推力が押す向き（青線）
+    if (l.throttle > 0.02 && Math.hypot(...ro.push) > 0.02) {
+      c.strokeStyle = '#9fd8ff';
+      const k = (R * 0.8) / Math.sin(25 * Math.PI / 180);
+      c.beginPath(); c.moveTo(rx, ry); c.lineTo(rx + ro.push[0] * k, ry + ro.push[1] * k); c.stroke();
+    }
     c.fillStyle = WARN;
     c.beginPath(); c.arc(rx, ry, 3, 0, Math.PI * 2); c.fill();
+    // 見出しと凡例（右端にそろえて、画面からはみ出さないように）
+    c.textAlign = 'right';
+    const right = w - 10;
     c.fillStyle = DIM;
-    c.fillText(`パッド位置（半径 ${range.toFixed(0)} m）`, rx - R, ry - R - 8);
+    c.font = '11px "Zen Kaku Gothic New", sans-serif';
+    c.fillText(`真上から見た図（上が前方・半径 ${range.toFixed(0)} m）`, right, ry - R - 8);
+    const ly = ry + R + 16;
+    c.fillStyle = OK; c.fillText('● パッド', right, ly);
+    c.fillStyle = WARN; c.fillText('○ 着地予測　─ 進む向き', right, ly + 14);
+    c.fillStyle = '#9fd8ff'; c.fillText('─ 推力が押す向き', right, ly + 28);
+    c.textAlign = 'left';
 
     // データ回収
     if (l.phase === 'surface') {
