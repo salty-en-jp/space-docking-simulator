@@ -110,3 +110,64 @@ button:hover { filter: brightness(1.15); }
   .card { padding: 16px; }
   .logo { font-size: 36px; }
 }
+
+/* ---- マニューバ編 ---- */
+#mcanvas { pointer-events: none; }
+#mui { position: absolute; inset: 0; pointer-events: none; font-family: var(--mono); color: var(--green); }
+#mtop { position: absolute; top: 12px; left: 16px; display: flex; gap: 10px; align-items: center; font-size: 13px; letter-spacing: 0.06em; }
+#m-badges span { border: 1px solid var(--green-dim); padding: 1px 6px; margin-right: 6px; font-size: 11px; white-space: nowrap; }
+#m-badges .lock { color: #021; background: var(--green); border-color: var(--green); }
+#mclock { position: absolute; top: 38px; left: 50%; transform: translateX(-50%); display: flex; gap: 18px; align-items: baseline; background: var(--panel); border: 1px solid var(--green-dim); padding: 6px 14px; white-space: nowrap; }
+#mclock .lbl { font-family: var(--sans); font-size: 12px; color: #9fc; margin-right: 6px; }
+#mclock b { font-size: 18px; font-weight: normal; color: #eafff3; }
+#mc-rate { font-size: 12px; }
+#mpanel { position: absolute; top: 90px; right: 16px; width: 230px; background: var(--panel); border: 1px solid var(--green-dim); padding: 8px 10px; font-size: 13px; }
+#mpanel .row { display: flex; justify-content: space-between; gap: 8px; line-height: 1.55; color: #bfe9d0; }
+#mpanel .k { font-family: var(--sans); font-size: 12px; opacity: 0.85; white-space: nowrap; }
+#mpanel .v { text-align: right; }
+#mmsg { position: absolute; left: 50%; bottom: 120px; transform: translateX(-50%); text-align: center; font-family: var(--sans); font-size: 16px; text-shadow: 0 0 8px #000, 0 0 3px #000; max-width: min(90vw, 640px); }
+#mmsg.warn { color: var(--amber); } #mmsg.bad { color: var(--red); }
+#mmsg.big { font-family: var(--mono); font-size: 36px; letter-spacing: 0.15em; bottom: 45%; }
+#mtoast { position: absolute; left: 16px; top: 90px; max-width: min(400px, calc(100vw - 280px)); font-family: var(--sans); font-size: 14px; line-height: 1.7; color: #dfe; background: rgba(4, 12, 9, 0.96); border-left: 3px solid var(--orange); padding: 10px 14px; transition: opacity 1s; z-index: 2; pointer-events: auto; cursor: pointer; }
+#mtoast.gone { pointer-events: none; }
+#mtoast h4 { margin: 0 0 4px; font-family: var(--mono); color: var(--orange); letter-spacing: 0.1em; font-weight: normal; }
+#mtouch { position: absolute; left: 0; right: 0; bottom: 0; padding: 0 12px calc(12px + env(safe-area-inset-bottom)); display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 8px; pointer-events: none; }
+#mtouch .pad { display: grid; grid-template-columns: repeat(2, 58px); gap: 6px; pointer-events: auto; }
+#mtouch .pad.tilt { grid-template-columns: repeat(3, 52px); }
+#mtouch .pad.mid { grid-template-columns: repeat(4, auto); }
+#mtouch .pad.right { grid-template-columns: 96px; }
+#mtouch button { height: 52px; border-radius: 10px; border: 1px solid var(--green-dim); background: rgba(10, 30, 20, 0.55); color: var(--green); font-family: var(--sans); font-size: 15px; touch-action: none; user-select: none; -webkit-user-select: none; white-space: nowrap; padding: 0 8px; }
+#mtouch .mid button { height: 38px; font-size: 13px; }
+#mtouch .thrust { height: 110px; font-size: 18px; border-color: var(--amber); color: var(--amber); }
+#mtouch button.on { background: rgba(124, 255, 178, 0.35); color: #000; }
+#mtouch button[data-toggle].on { background: var(--green); border-color: var(--green); color: #021; font-weight: 700; }
+#mtouch .hidden { display: none !important; }
+h3.sec { font-family: var(--mono); color: var(--orange); letter-spacing: 0.2em; font-weight: normal; font-size: 14px; margin: 20px 0 8px; border-top: 1px solid rgba(255,138,31,0.3); padding-top: 14px; }
+@media (max-width: 720px) {
+  #mclock { top: 34px; gap: 10px; padding: 4px 8px; }
+  #mclock b { font-size: 14px; }
+  #mclock .lbl { font-size: 10px; margin-right: 3px; }
+  #mc-rate { font-size: 10px; }
+  #mtop { left: 8px; top: 8px; font-size: 11px; }
+  #mpanel { top: 72px; right: 8px; left: 8px; width: auto; font-size: 11px; padding: 4px 8px; display: grid; grid-template-columns: 1fr 1fr; column-gap: 12px; }
+  #mpanel .k { font-size: 10px; }
+  #mtoast { left: 8px; right: 8px; top: 72px; max-width: none; font-size: 12px; }
+  #mmsg { font-size: 13px; bottom: 210px; }
+  #mtouch .pad.mid { order: -1; width: 100%; grid-template-columns: repeat(4, 1fr); }
+  #mtouch .mid button { height: 34px; font-size: 12px; }
+  #mtouch .pad { grid-template-columns: repeat(2, 54px); }
+  #mtouch .pad.tilt { grid-template-columns: repeat(3, 48px); }
+  #mtouch .pad.tilt button { height: 48px; }
+  #mtouch .thrust { height: 100px; }
+}
+@media (max-height: 500px) {
+  #mclock { top: 6px; left: auto; right: 12px; transform: none; padding: 3px 8px; }
+  #mclock b { font-size: 13px; }
+  #mtop { top: 8px; }
+  #mpanel { top: 40px; right: 8px; left: auto; width: 200px; display: block; font-size: 10px; padding: 4px 8px; }
+  #mtoast { top: 34px; max-width: calc(100vw - 230px); font-size: 11px; line-height: 1.5; padding: 6px 10px; }
+  #mmsg { bottom: 70px; font-size: 13px; }
+  #mtouch .pad.mid { order: 0; width: auto; grid-template-columns: repeat(4, auto); }
+  #mtouch .mid button { height: 30px; font-size: 11px; }
+  #mtouch .thrust { height: 90px; }
+}

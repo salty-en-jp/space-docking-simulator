@@ -13,6 +13,46 @@
   <div id="app">
     <canvas id="view"></canvas>
     <canvas id="hud"></canvas>
+    <canvas id="mcanvas" class="hidden"></canvas>
+
+    <!-- マニューバ編UI -->
+    <div id="mui" class="hidden">
+      <div id="mtop"><span id="m-phase"></span><span id="m-badges"></span></div>
+      <div id="mclock">
+        <div><span class="lbl">あなた</span><b id="mc-ship"></b></div>
+        <div><span class="lbl">外の世界</span><b id="mc-out"></b></div>
+        <div id="mc-rate"></div>
+      </div>
+      <div id="mpanel"></div>
+      <div id="mmsg"></div>
+      <div id="mtoast"></div>
+      <div id="mtouch" class="hidden">
+        <div class="pad left orbit">
+          <button data-key="KeyA">↺</button>
+          <button data-key="KeyD">↻</button>
+        </div>
+        <div class="pad left lander tilt">
+          <span></span><button data-key="ArrowUp">▲</button><span></span>
+          <button data-key="ArrowLeft">◀</button><button data-key="ArrowDown">▼</button><button data-key="ArrowRight">▶</button>
+        </div>
+        <div class="pad mid orbit">
+          <button data-key="KeyP" data-toggle="1">順行</button>
+          <button data-key="KeyR" data-toggle="1">逆行</button>
+          <button data-key="KeyT" data-toggle="1">目標逆行</button>
+          <button data-key="KeyZ" data-toggle="1">拡大</button>
+          <button data-key="Comma" data-toggle="1">遅く</button>
+          <button data-key="Period" data-toggle="1">速く</button>
+          <button data-key="Escape" data-toggle="1">II</button>
+        </div>
+        <div class="pad mid lander">
+          <button data-key="KeyL" data-toggle="1">速度保持</button>
+          <button data-key="Escape" data-toggle="1">II</button>
+        </div>
+        <div class="pad right">
+          <button data-key="KeyW" class="thrust">噴射</button>
+        </div>
+      </div>
+    </div>
 
     <!-- 飛行中UI -->
     <div id="flightui" class="hidden">
@@ -85,6 +125,8 @@
           回転がそろうと、目の前のステーションが静止して見えるはずだ。
         </p>
         <div id="missions"></div>
+        <h3 class="sec">マニューバ編</h3>
+        <div id="mmissions"></div>
         <div class="row-btns">
           <button id="btn-demo" class="ghost">デモを見る（自動操縦）</button>
           <button id="btn-help" class="ghost">操作方法</button>

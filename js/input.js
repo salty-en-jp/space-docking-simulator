@@ -3,15 +3,20 @@ const held = new Set();
 const toggles = { sas: true, spinLock: false, bodyFrame: false };
 const listeners = {};
 
+// 同じキーに複数のリスナーを登録できる（ドッキング編とマニューバ編がそれぞれ自分のモードのときだけ反応する）
 export function onKey(code, fn) {
-  listeners[code] = fn;
+  (listeners[code] = listeners[code] || []).push(fn);
+}
+const fire = (code, e) => (listeners[code] || []).forEach((fn) => fn(e));
+export function isHeld(code) {
+  return held.has(code);
 }
 
 window.addEventListener('keydown', (e) => {
   if (e.repeat) return;
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
   held.add(e.code);
-  if (listeners[e.code]) listeners[e.code](e);
+  fire(e.code, e);
 });
 window.addEventListener('keyup', (e) => held.delete(e.code));
 window.addEventListener('blur', () => held.clear());
@@ -23,7 +28,7 @@ export function bindTouchButtons(root) {
     const down = (e) => {
       e.preventDefault();
       if (btn.dataset.toggle) {
-        if (listeners[code]) listeners[code](e);
+        fire(code, e);
         return;
       }
       held.add(code);

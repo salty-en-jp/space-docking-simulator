@@ -6,6 +6,6 @@
   "description": "ブラウザで動く回転ステーション・ドッキングシミュレータ",
   "scripts": {
     "start": "python3 -m http.server 8000",
-    "test": "node test/sim.test.js"
+    "test": "node test/sim.test.js && node test/maneuver.test.js"
   }
 }

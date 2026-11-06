@@ -5,6 +5,7 @@ import { createStation, createShip, createStars, createPlanet } from './models.j
 import { HUD } from './hud.js';
 import { AudioEngine } from './audio.js';
 import { readControls, onKey, bindTouchButtons, state as inputState } from './input.js';
+import { Maneuver, MANEUVER_MISSION } from './maneuver/game.js';
 
 const $ = (id) => document.getElementById(id);
 const DT = 1 / 120;
@@ -68,6 +69,8 @@ headlight.target = hlTarget;
 const hud = new HUD($('hud'), $('panel'));
 const audio = new AudioEngine();
 
+let maneuver = null; // マニューバ編（下で生成）
+
 function resize() {
   const w = innerWidth, h = innerHeight;
   renderer.setSize(w, h, false);
@@ -76,6 +79,7 @@ function resize() {
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   hud.resize(w, h, Math.min(devicePixelRatio, 2));
+  if (maneuver) maneuver.resize(w, h, Math.min(devicePixelRatio, 2));
 }
 addEventListener('resize', resize);
 resize();
@@ -102,6 +106,21 @@ function buildMissionList() {
     b.onclick = () => startMission(sc.id, false);
     box.appendChild(b);
   }
+  // マニューバ編
+  const mbox = $('mmissions');
+  mbox.innerHTML = '';
+  const mb = document.createElement('button');
+  mb.className = 'mission';
+  const mbest = best[MANEUVER_MISSION.id];
+  mb.innerHTML = `${mbest ? `<span class="best">BEST ${mbest.rank} ${mbest.score}</span>` : ''}<div class="t">${MANEUVER_MISSION.title}<span class="lv">★★★☆ 軌道・着陸</span></div><div class="d">${MANEUVER_MISSION.briefing}</div>`;
+  mb.onclick = startManeuver;
+  mbox.appendChild(mb);
+}
+
+function startManeuver() {
+  mode = 'maneuver';
+  ['title', 'pause', 'result', 'help', 'flightui'].forEach((o) => show(o, false));
+  maneuver.start();
 }
 
 // ---------------- ゲーム状態 ----------------
@@ -168,6 +187,7 @@ function flash(text, cls = '', ms = 2500) {
 }
 
 function toTitle() {
+  if (maneuver.active) maneuver.stop();
   mode = 'title';
   isDemo = false;
   ['pause', 'result', 'help', 'flightui'].forEach((o) => show(o, false));
@@ -220,10 +240,11 @@ function showResult() {
 // ---------------- キー操作 ----------------
 onKey('Escape', () => (mode === 'play' ? pause(true) : mode === 'paused' ? pause(false) : null));
 onKey('KeyP', () => (mode === 'play' ? pause(true) : mode === 'paused' ? pause(false) : null));
-onKey('KeyC', () => { camMode = (camMode + 1) % 3; updateBadges(); if (mode === 'play') flash(CAM_NAMES[camMode], '', 1200); });
-onKey('KeyH', () => { if (mode === 'play') $('keyhelp').classList.toggle('hidden'); });
-onKey('KeyT', () => { inputState.sas = !inputState.sas; updateBadges(); if (mode === 'play') flash(`SAS ${inputState.sas ? 'ON' : 'OFF'}`, '', 1200); });
+onKey('KeyC', () => { if (mode === 'maneuver') return; camMode = (camMode + 1) % 3; updateBadges(); if (mode === 'play') flash(CAM_NAMES[camMode], '', 1200); });
+onKey('KeyH', () => { if (mode === 'maneuver') return; if (mode === 'play') $('keyhelp').classList.toggle('hidden'); });
+onKey('KeyT', () => { if (mode === 'maneuver') return; inputState.sas = !inputState.sas; updateBadges(); if (mode === 'play') flash(`SAS ${inputState.sas ? 'ON' : 'OFF'}`, '', 1200); });
 onKey('KeyL', () => {
+  if (mode === 'maneuver') return;
   inputState.spinLock = !inputState.spinLock;
   updateBadges();
   if (mode === 'play') flash(inputState.spinLock ? `回転ロック ON（回転差 ${SPIN_LOCK_CAPTURE_RPM} rpm 以内で作動）` : '回転ロック OFF', '', 1800);
@@ -246,9 +267,9 @@ bindTouchButtons($('touch'));
 $('btn-demo').onclick = () => startMission('extreme', true);
 $('btn-help').onclick = () => show('help', true);
 $('btn-help-close').onclick = () => show('help', false);
-$('btn-resume').onclick = () => pause(false);
-$('btn-restart').onclick = () => startMission(sim.sc.id, false);
-$('btn-retry').onclick = () => startMission(sim.sc.id, false);
+$('btn-resume').onclick = () => (maneuver.active ? maneuver.setPaused(false) : pause(false));
+$('btn-restart').onclick = () => (maneuver.active ? maneuver.restart() : startMission(sim.sc.id, false));
+$('btn-retry').onclick = () => (maneuver.active ? maneuver.restart() : startMission(sim.sc.id, false));
 $('btn-menu').onclick = toTitle;
 $('btn-menu2').onclick = toTitle;
 
@@ -287,6 +308,11 @@ let last = performance.now();
 function frame(now) {
   const dtReal = Math.min(0.1, (now - last) / 1000);
   last = now;
+  if (mode === 'maneuver') {
+    maneuver.frame(dtReal, now);
+    requestAnimationFrame(frame);
+    return;
+  }
 
   if (mode === 'play' || mode === 'title' || mode === 'result') {
     const manual = mode === 'play' ? readControls() : null;
@@ -384,8 +410,10 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
+maneuver = new Maneuver({ renderer, audio, isTouch, onBest: saveBest });
+resize();
 toTitle();
 requestAnimationFrame(frame);
 
 // デバッグ用（ブラウザのコンソールから参照できる）
-window.__spinsync = { get sim() { return sim; }, startMission };
+window.__spinsync = { get sim() { return sim; }, startMission, startManeuver, maneuver };
