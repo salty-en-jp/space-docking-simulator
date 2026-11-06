@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <title>SPIN SYNC — 回転ドッキング</title>
+  <meta name="description" content="高速回転するステーションに回転を合わせてドッキングする、ブラウザ用の宇宙船シミュレータ" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Zen+Kaku+Gothic+New:wght@400;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="app">
+    <canvas id="view"></canvas>
+    <canvas id="hud"></canvas>
+
+    <!-- 飛行中UI -->
+    <div id="flightui" class="hidden">
+      <div id="topbar">
+        <span id="mission-name"></span>
+        <span id="badges"></span>
+      </div>
+      <div id="panel"></div>
+      <div id="msg"></div>
+      <div id="briefing-toast"></div>
+      <div id="keyhelp" class="hidden">
+        <h3>操作</h3>
+        <table>
+          <tr><td>W / S</td><td>前進 / 後退</td></tr>
+          <tr><td>A / D</td><td>左 / 右へ平行移動</td></tr>
+          <tr><td>R / F</td><td>上 / 下へ平行移動</td></tr>
+          <tr><td>↑ ↓</td><td>機首を上げる / 下げる</td></tr>
+          <tr><td>← →</td><td>機首を左 / 右へ</td></tr>
+          <tr><td>Q / E</td><td>反時計回り / 時計回りにロール</td></tr>
+          <tr><td>Shift（押しながら）</td><td>微調整モード</td></tr>
+          <tr><td>X（押しながら）</td><td>横流れを止める</td></tr>
+          <tr><td>T</td><td>姿勢安定装置（SAS）のオン / オフ</td></tr>
+          <tr><td>C</td><td>カメラ切り替え</td></tr>
+          <tr><td>Z</td><td>オートパイロット</td></tr>
+          <tr><td>M</td><td>音楽のオン / オフ</td></tr>
+          <tr><td>H</td><td>この表示</td></tr>
+          <tr><td>Esc</td><td>一時停止</td></tr>
+        </table>
+      </div>
+      <div id="touch" class="hidden">
+        <div class="pad left">
+          <button data-key="KeyR">上</button>
+          <button data-key="KeyW">前</button>
+          <button data-key="KeyF">下</button>
+          <button data-key="KeyA">左</button>
+          <button data-key="KeyS">後</button>
+          <button data-key="KeyD">右</button>
+        </div>
+        <div class="pad mid">
+          <button data-key="ShiftLeft">微調整</button>
+          <button data-key="KeyX">横止め</button>
+          <button data-key="KeyC" data-toggle="1">視点</button>
+          <button data-key="Escape" data-toggle="1">II</button>
+        </div>
+        <div class="pad right">
+          <button data-key="KeyQ">↺</button>
+          <button data-key="ArrowUp">▲</button>
+          <button data-key="KeyE">↻</button>
+          <button data-key="ArrowLeft">◀</button>
+          <button data-key="ArrowDown">▼</button>
+          <button data-key="ArrowRight">▶</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- タイトル -->
+    <div id="title" class="overlay">
+      <div class="card">
+        <div class="logo">SPIN SYNC</div>
+        <div class="sub">回転ステーション・ドッキング・シミュレータ</div>
+        <p class="lead">
+          回転するステーションの軸に船を合わせ、<b>自分の船も同じ速さで回転させて</b>ドッキングする。
+          回転がそろうと、目の前のステーションが静止して見えるはずだ。
+        </p>
+        <div id="missions"></div>
+        <div class="row-btns">
+          <button id="btn-demo" class="ghost">デモを見る（自動操縦）</button>
+          <button id="btn-help" class="ghost">操作方法</button>
+        </div>
+        <div class="foot">キーボード推奨 ／ スマートフォン・タブレットは画面ボタンで操作できます</div>
+      </div>
+    </div>
+
+    <!-- 一時停止 -->
+    <div id="pause" class="overlay hidden">
+      <div class="card small">
+        <h2>一時停止</h2>
+        <div class="row-btns col">
+          <button id="btn-resume">再開</button>
+          <button id="btn-restart" class="ghost">最初から</button>
+          <button id="btn-menu" class="ghost">タイトルへ</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 結果 -->
+    <div id="result" class="overlay hidden">
+      <div class="card small">
+        <h2 id="res-title"></h2>
+        <div id="res-body"></div>
+        <div class="row-btns">
+          <button id="btn-retry">もう一度</button>
+          <button id="btn-menu2" class="ghost">タイトルへ</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 操作方法 -->
+    <div id="help" class="overlay hidden">
+      <div class="card">
+        <h2>ドッキングの手順</h2>
+        <ol class="steps">
+          <li><b>機首を向ける</b>：矢印キーで、画面中央の照準（○）をポートの◇に重ねる。</li>
+          <li><b>軸線に乗る</b>：A/D・R/F で横に動き、四角いゲートの列の中心に入る。X を押すと横流れが止まる。</li>
+          <li><b>回転を合わせる</b>：Q/E でロールして「回転差」を 0 に。ゲートとステーションが止まって見えたら成功。</li>
+          <li><b>マーカーをそろえる</b>：Shift を押しながら Q/E で、オレンジの目印を真上に。</li>
+          <li><b>そっと前進</b>：W で少しだけ押して、ゆっくり近づく。接触時の速度が速すぎると弾かれる。</li>
+        </ol>
+        <p class="hint">右のパネルの数値が<span class="ok">緑</span>なら許容範囲内、<span class="warn">黄</span>はもう少し、<span class="bad">赤</span>は大きくずれています。宇宙では一度動き出すと止まらないので、逆向きに噴射して止めましょう。</p>
+        <div class="row-btns"><button id="btn-help-close">閉じる</button></div>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

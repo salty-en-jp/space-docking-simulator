@@ -1,0 +1,105 @@
+:root {
+  --green: #7cffb2;
+  --green-dim: rgba(124, 255, 178, 0.45);
+  --amber: #ffb347;
+  --red: #ff5c5c;
+  --orange: #ff8a1f;
+  --bg: #000;
+  --panel: rgba(4, 14, 10, 0.72);
+  --mono: 'Share Tech Mono', ui-monospace, Menlo, Consolas, monospace;
+  --sans: 'Zen Kaku Gothic New', 'Hiragino Sans', 'Yu Gothic', system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: #dfe; font-family: var(--sans); overflow: hidden; }
+#app { position: fixed; inset: 0; }
+canvas { position: absolute; inset: 0; display: block; }
+#hud { pointer-events: none; }
+.hidden { display: none !important; }
+
+/* ---- 飛行中UI ---- */
+#flightui { position: absolute; inset: 0; pointer-events: none; font-family: var(--mono); color: var(--green); }
+#topbar { position: absolute; top: 12px; left: 16px; right: 16px; display: flex; gap: 12px; align-items: center; font-size: 13px; letter-spacing: 0.08em; }
+#badges span { border: 1px solid var(--green-dim); padding: 1px 6px; margin-right: 6px; font-size: 11px; }
+#badges .auto { color: var(--amber); border-color: var(--amber); }
+#panel { position: absolute; top: 44px; right: 16px; width: 210px; background: var(--panel); border: 1px solid var(--green-dim); padding: 8px 10px; font-size: 13px; }
+#panel .row { display: flex; justify-content: space-between; line-height: 1.55; color: #bfe9d0; }
+#panel .k { font-family: var(--sans); font-size: 12px; opacity: 0.85; }
+#msg { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); text-align: center; font-family: var(--sans); font-size: 18px; text-shadow: 0 0 8px rgba(0,0,0,0.9); max-width: min(90vw, 620px); transition: opacity 0.4s; }
+#msg.warn { color: var(--amber); }
+#msg.bad { color: var(--red); }
+#msg.big { font-family: var(--mono); font-size: 40px; letter-spacing: 0.2em; }
+#briefing-toast { position: absolute; left: 16px; top: 44px; max-width: min(420px, calc(100vw - 260px)); font-family: var(--sans); font-size: 14px; line-height: 1.7; color: #dfe; background: var(--panel); border-left: 3px solid var(--orange); padding: 10px 14px; transition: opacity 1s; }
+#briefing-toast h4 { margin: 0 0 4px; font-family: var(--mono); color: var(--orange); letter-spacing: 0.1em; font-weight: normal; }
+#keyhelp { position: absolute; left: 16px; bottom: 16px; background: var(--panel); border: 1px solid var(--green-dim); padding: 8px 12px; font-size: 12px; }
+#keyhelp h3 { margin: 0 0 4px; font-size: 13px; }
+#keyhelp td { padding: 1px 8px 1px 0; }
+#keyhelp td:last-child { font-family: var(--sans); color: #cfe; }
+
+/* タッチ操作 */
+#touch { position: absolute; left: 0; right: 0; bottom: 0; padding: 0 12px calc(12px + env(safe-area-inset-bottom)); display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 8px; pointer-events: none; }
+#touch .pad { display: grid; grid-template-columns: repeat(3, 52px); gap: 6px; pointer-events: auto; }
+#touch .pad.mid { grid-template-columns: repeat(2, 64px); }
+#touch button { height: 52px; border-radius: 10px; border: 1px solid var(--green-dim); background: rgba(10, 30, 20, 0.55); color: var(--green); font-family: var(--sans); font-size: 15px; touch-action: none; user-select: none; -webkit-user-select: none; }
+#touch .mid button { height: 40px; font-size: 13px; white-space: nowrap; padding: 0 6px; }
+#touch button.on { background: rgba(124, 255, 178, 0.35); color: #000; }
+
+/* ---- オーバーレイ ---- */
+.overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; background: radial-gradient(ellipse at center, rgba(0,0,0,0.35), rgba(0,0,0,0.8)); overflow-y: auto; }
+.card { width: min(760px, 100%); max-height: 100%; overflow-y: auto; background: rgba(3, 10, 8, 0.86); border: 1px solid var(--green-dim); padding: 28px 30px; box-shadow: 0 0 40px rgba(124,255,178,0.08); }
+.card.small { width: min(460px, 100%); }
+.logo { font-family: var(--mono); font-size: clamp(38px, 9vw, 64px); letter-spacing: 0.32em; color: var(--green); text-shadow: 0 0 18px rgba(124,255,178,0.45); }
+.sub { font-size: 14px; letter-spacing: 0.3em; color: #9fc; margin-top: 2px; }
+.lead { line-height: 1.8; color: #cde; margin: 18px 0; }
+h2 { font-family: var(--mono); color: var(--green); letter-spacing: 0.15em; margin: 0 0 12px; font-weight: normal; }
+#missions { display: grid; gap: 10px; }
+.mission { text-align: left; display: block; width: 100%; padding: 14px 16px; border: 1px solid var(--green-dim); background: rgba(124,255,178,0.04); color: #dfe; cursor: pointer; font-family: var(--sans); }
+.mission:hover, .mission:focus-visible { background: rgba(124,255,178,0.12); outline: none; }
+.mission .t { font-family: var(--mono); color: var(--green); letter-spacing: 0.1em; }
+.mission .t .lv { color: var(--orange); margin-left: 8px; }
+.mission .d { font-size: 13px; line-height: 1.7; color: #bcd; margin-top: 4px; }
+.mission .best { float: right; font-family: var(--mono); color: var(--amber); font-size: 12px; }
+.row-btns { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+.row-btns.col { flex-direction: column; }
+button { font-family: var(--sans); font-size: 15px; padding: 10px 18px; border: 1px solid var(--green); background: var(--green); color: #021; cursor: pointer; }
+button.ghost { background: transparent; color: var(--green); border-color: var(--green-dim); }
+button:hover { filter: brightness(1.15); }
+.foot { margin-top: 18px; font-size: 12px; color: #7a9; }
+.steps { line-height: 1.9; color: #cde; padding-left: 1.3em; }
+.hint { font-size: 13px; line-height: 1.8; color: #bcd; }
+.ok { color: var(--green); } .warn { color: var(--amber); } .bad { color: var(--red); }
+.rank { font-family: var(--mono); font-size: 72px; color: var(--amber); text-align: center; line-height: 1; margin: 4px 0 8px; text-shadow: 0 0 20px rgba(255,179,71,0.4); }
+.stats { width: 100%; border-collapse: collapse; font-size: 14px; }
+.stats td { padding: 3px 4px; border-bottom: 1px solid rgba(124,255,178,0.12); }
+.stats td:last-child { text-align: right; font-family: var(--mono); }
+.reason { line-height: 1.8; color: #dfe; }
+
+@media (max-width: 720px) {
+  #panel { width: 168px; font-size: 11px; top: 40px; right: 8px; padding: 6px 8px; }
+  #panel .k { font-size: 10px; }
+  #topbar { left: 8px; right: 8px; font-size: 11px; }
+  #briefing-toast { left: 8px; max-width: calc(100vw - 190px); font-size: 12px; }
+  #msg { font-size: 15px; }
+  #msg.big { font-size: 28px; }
+  .card { padding: 20px 18px; }
+  #touch .pad { grid-template-columns: repeat(3, 46px); }
+  #touch button { height: 46px; }
+  /* 縦画面: 補助ボタンを上の段に横一列で */
+  #touch .pad.mid { order: -1; width: 100%; grid-template-columns: repeat(4, 1fr); }
+  #touch .mid button { height: 36px; }
+}
+/* 横向きスマホ（高さが低い） */
+@media (max-height: 500px) {
+  #panel { width: 160px; font-size: 10px; top: 36px; right: 8px; padding: 4px 8px; }
+  #panel .row { line-height: 1.35; }
+  #panel .k { font-size: 10px; }
+  #topbar { top: 8px; font-size: 11px; }
+  #briefing-toast { top: 36px; font-size: 12px; line-height: 1.5; padding: 6px 10px; max-width: calc(100vw - 200px); }
+  #msg { top: 14%; font-size: 14px; }
+  #touch { padding-left: calc(10px + env(safe-area-inset-left)); padding-right: calc(10px + env(safe-area-inset-right)); }
+  #touch .pad { grid-template-columns: repeat(3, 44px); gap: 5px; }
+  #touch button { height: 44px; font-size: 14px; }
+  #touch .pad.mid { order: 0; width: auto; grid-template-columns: repeat(4, auto); align-self: flex-end; }
+  #touch .mid button { height: 34px; font-size: 12px; }
+  .card { padding: 16px; }
+  .logo { font-size: 36px; }
+}
