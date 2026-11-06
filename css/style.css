@@ -21,6 +21,9 @@ canvas { position: absolute; inset: 0; display: block; }
 #topbar { position: absolute; top: 12px; left: 16px; right: 16px; display: flex; gap: 12px; align-items: center; font-size: 13px; letter-spacing: 0.08em; }
 #badges span { border: 1px solid var(--green-dim); padding: 1px 6px; margin-right: 6px; font-size: 11px; }
 #badges .auto { color: var(--amber); border-color: var(--amber); }
+#badges .lock { color: #021; background: var(--green); border-color: var(--green); }
+#badges span { white-space: nowrap; }
+#mission-name { white-space: nowrap; }
 #panel { position: absolute; top: 44px; right: 16px; width: 210px; background: var(--panel); border: 1px solid var(--green-dim); padding: 8px 10px; font-size: 13px; }
 #panel .row { display: flex; justify-content: space-between; line-height: 1.55; color: #bfe9d0; }
 #panel .k { font-family: var(--sans); font-size: 12px; opacity: 0.85; }
@@ -42,6 +45,7 @@ canvas { position: absolute; inset: 0; display: block; }
 #touch button { height: 52px; border-radius: 10px; border: 1px solid var(--green-dim); background: rgba(10, 30, 20, 0.55); color: var(--green); font-family: var(--sans); font-size: 15px; touch-action: none; user-select: none; -webkit-user-select: none; }
 #touch .mid button { height: 40px; font-size: 13px; white-space: nowrap; padding: 0 6px; }
 #touch button.on { background: rgba(124, 255, 178, 0.35); color: #000; }
+#touch button[data-toggle].on { background: var(--green); border-color: var(--green); color: #021; font-weight: 700; }
 
 /* ---- オーバーレイ ---- */
 .overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; background: radial-gradient(ellipse at center, rgba(0,0,0,0.35), rgba(0,0,0,0.8)); overflow-y: auto; }
@@ -78,13 +82,16 @@ button:hover { filter: brightness(1.15); }
   #panel .k { font-size: 10px; }
   #topbar { left: 8px; right: 8px; font-size: 11px; }
   #briefing-toast { left: 8px; max-width: calc(100vw - 190px); font-size: 12px; }
-  #msg { font-size: 15px; }
+  #msg { font-size: 15px; top: 44%; }
+  /* 縦画面ではバッジを最小限に */
+  #mission-name .mname { display: none; }
+  #badges .opt { display: none; }
   #msg.big { font-size: 28px; }
   .card { padding: 20px 18px; }
   #touch .pad { grid-template-columns: repeat(3, 46px); }
   #touch button { height: 46px; }
   /* 縦画面: 補助ボタンを上の段に横一列で */
-  #touch .pad.mid { order: -1; width: 100%; grid-template-columns: repeat(4, 1fr); }
+  #touch .pad.mid { order: -1; width: 100%; grid-template-columns: repeat(5, 1fr); }
   #touch .mid button { height: 36px; }
 }
 /* 横向きスマホ（高さが低い） */
@@ -94,11 +101,11 @@ button:hover { filter: brightness(1.15); }
   #panel .k { font-size: 10px; }
   #topbar { top: 8px; font-size: 11px; }
   #briefing-toast { top: 36px; font-size: 12px; line-height: 1.5; padding: 6px 10px; max-width: calc(100vw - 200px); }
-  #msg { top: 14%; font-size: 14px; }
+  #msg { top: 34%; font-size: 14px; }
   #touch { padding-left: calc(10px + env(safe-area-inset-left)); padding-right: calc(10px + env(safe-area-inset-right)); }
   #touch .pad { grid-template-columns: repeat(3, 44px); gap: 5px; }
   #touch button { height: 44px; font-size: 14px; }
-  #touch .pad.mid { order: 0; width: auto; grid-template-columns: repeat(4, auto); align-self: flex-end; }
+  #touch .pad.mid { order: 0; width: auto; grid-template-columns: repeat(5, auto); align-self: flex-end; }
   #touch .mid button { height: 34px; font-size: 12px; }
   .card { padding: 16px; }
   .logo { font-size: 36px; }

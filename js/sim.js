@@ -12,6 +12,8 @@ export const LIN_ACC = 0.5;        // 並進スラスタ加速度 [m/s^2]
 export const PY_ACC = 0.35;        // ピッチ/ヨー角加速度 [rad/s^2]
 export const ROLL_ACC = 1.0;       // ロール角加速度 [rad/s^2]
 export const CRASH_SPEED = 1.5;    // これ以上の接近速度で接触すると大破
+export const SPIN_LOCK_CAPTURE_RPM = 3; // 回転ロックが作動する回転差
+export const ASSIST_SCORE_FACTOR = 0.9; // 回転ロック使用時のスコア倍率
 
 export const RPM = (Math.PI * 2) / 60;
 export const DEG = Math.PI / 180;
@@ -49,13 +51,29 @@ export const SCENARIOS = {
     start: { dist: 80, lateral: [5, 3], misalignDeg: 9, drift: [-0.05, 0.04, -0.3] },
     tol: { closing: 0.4, lateral: 0.45, align: 3.5, spin: 0.6, phase: 9, rate: 1.5 },
   },
+  advanced: {
+    id: 'advanced',
+    name: '高速',
+    title: 'MISSION 03 ／ 居住区画への帰還',
+    briefing:
+      '大型ステーション〈ハルシオン〉の居住区画は、地球と同じ重力を作るため毎分18回転している。軸は安定している。' +
+      '回転差が3rpm以内になったら［回転ロック］（Lキー）で回転を保てる。',
+    spinRpm: 18,
+    rollAcc: 0.7,
+    wobbleDeg: 0,
+    wobblePeriod: 60,
+    timeLimit: 0,
+    fuel: 100,
+    start: { dist: 85, lateral: [5, -4], misalignDeg: 9, drift: [0.05, 0.05, -0.35] },
+    tol: { closing: 0.4, lateral: 0.45, align: 3.5, spin: 0.6, phase: 9, rate: 1.5 },
+  },
   extreme: {
     id: 'extreme',
     name: '限界',
-    title: 'MISSION 03 ／ 制御不能',
+    title: 'MISSION 04 ／ 制御不能',
     briefing:
       '爆発事故でステーション〈ハルシオン〉は毎分36回転の高速回転に陥り、軸もぶれながら大気圏へ落ちつつある。' +
-      '残り5分。回転に同期できなければ、誰も帰れない。',
+      '残り5分。回転に同期できなければ、誰も帰れない。（回転ロック使用可）',
     spinRpm: 36,
     rollAcc: 1.0,
     wobbleDeg: 1.0,
@@ -115,6 +133,8 @@ export class Sim {
     this.lastContact = null;
     this.accBody = new THREE.Vector3();
     this.angBody = new THREE.Vector3();
+    this.spinLockState = 'off'; // off | armed（待機） | engaged（作動中） | manual（手動ロール中）
+    this.usedAssist = false;
 
     const a = this.axis(0);
     const P = this.portPos(0);
@@ -214,6 +234,22 @@ export class Sim {
       acc.add(clampLen(lat.multiplyScalar(-1.5), LIN_ACC));
     }
 
+    // 回転ロック: 回転差が小さく、ロール入力が無いとき、ステーションと同じ回転数を保つ
+    this.spinLockState = 'off';
+    if (c.spinLock) {
+      const err = this.omega - this.w.dot(a);
+      if (Math.abs(c.rz) > 0.01) {
+        this.spinLockState = 'manual';
+      } else if (hasFuel && Math.abs(err) < SPIN_LOCK_CAPTURE_RPM * RPM) {
+        const lim = this.rollAcc();
+        ang.addScaledVector(a, Math.max(-lim, Math.min(lim, err * 4)));
+        this.spinLockState = 'engaged';
+        this.usedAssist = true;
+      } else {
+        this.spinLockState = 'armed';
+      }
+    }
+
     if (hasFuel) {
       this.fuel = Math.max(0, this.fuel - (acc.length() + 0.5 * ang.length()) * dt);
     }
@@ -302,6 +338,7 @@ export class Sim {
       phase,
       fuel: this.fuel / this.fuelMax,
       hull: this.hull,
+      spinLock: this.spinLockState,
       timeLeft: this.sc.timeLimit ? Math.max(0, this.sc.timeLimit - t) : null,
     };
   }
@@ -357,9 +394,11 @@ export class Sim {
     this.relQ = Si.clone().multiply(this.q);
     const precision = checks.reduce((s, c) => s + Math.max(0, 1 - c.value / c.limit), 0) / checks.length;
     const fuelRatio = this.fuel / this.fuelMax;
-    const score = Math.round(400 + 400 * precision + 200 * fuelRatio * this.hull);
+    let score = 400 + 400 * precision + 200 * fuelRatio * this.hull;
+    if (this.usedAssist) score *= ASSIST_SCORE_FACTOR;
+    score = Math.round(score);
     const rank = score >= 850 ? 'S' : score >= 750 ? 'A' : score >= 620 ? 'B' : 'C';
-    this.result = { time: this.t, fuelUsed: 1 - fuelRatio, hull: this.hull, checks, score, rank };
+    this.result = { time: this.t, fuelUsed: 1 - fuelRatio, hull: this.hull, checks, score, rank, assist: this.usedAssist };
     this.events.push({ type: 'dock' });
   }
 

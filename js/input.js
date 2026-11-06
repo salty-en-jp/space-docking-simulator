@@ -1,6 +1,6 @@
 // キーボード／タッチ入力 → 操作量
 const held = new Set();
-const toggles = { sas: true };
+const toggles = { sas: true, spinLock: false };
 const listeners = {};
 
 export function onKey(code, fn) {
@@ -31,6 +31,7 @@ export function bindTouchButtons(root) {
     };
     const up = (e) => {
       e.preventDefault();
+      if (btn.dataset.toggle) return; // 切り替えボタンの点灯状態は main 側で管理
       held.delete(code);
       btn.classList.remove('on');
     };
@@ -54,6 +55,7 @@ export function readControls() {
     fine: held.has('ShiftLeft') || held.has('ShiftRight') || toggles.fineLatch === true,
     sas: toggles.sas,
     killRel: held.has('KeyX'),
+    spinLock: toggles.spinLock,
   };
 }
 

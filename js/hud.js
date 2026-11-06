@@ -163,7 +163,12 @@ export class HUD {
     const ok = Math.abs(tm.dSpinRpm) <= tol.spin;
     c.fillStyle = ok ? OK : WARN;
     c.fillRect(px - 2, y - 4, 4, H + 8);
-    this.label(c, '回転同期', x, y - 8, ok ? OK : DIM);
+    const lockText = { engaged: '  ロック作動中', armed: '  ロック待機', manual: '  ロック（手動中）' }[tm.spinLock] || '';
+    this.label(c, '回転同期' + lockText, x, y - 8, tm.spinLock === 'engaged' ? OK : ok ? OK : DIM);
+    if (tm.spinLock === 'engaged') {
+      c.strokeStyle = OK;
+      c.strokeRect(x - 3, y - 3, W + 6, H + 6);
+    }
     this.label(c, '遅い', x, y + H + 14);
     this.label(c, '速い', x + W - 24, y + H + 14);
   }

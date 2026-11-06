@@ -1,5 +1,5 @@
 import * as THREE from '../vendor/three.module.min.js';
-import { Sim, SCENARIOS, NOSE, PORT_Z } from './sim.js';
+import { Sim, SCENARIOS, NOSE, PORT_Z, SPIN_LOCK_CAPTURE_RPM } from './sim.js';
 import { Autopilot } from './autopilot.js';
 import { createStation, createShip, createStars, createPlanet } from './models.js';
 import { HUD } from './hud.js';
@@ -93,7 +93,7 @@ function saveBest(id, score, rank) {
 function buildMissionList() {
   const box = $('missions');
   box.innerHTML = '';
-  const stars = { training: '★☆☆', standard: '★★☆', extreme: '★★★' };
+  const stars = { training: '★☆☆☆', standard: '★★☆☆', advanced: '★★★☆', extreme: '★★★★' };
   for (const sc of Object.values(SCENARIOS)) {
     const b = document.createElement('button');
     b.className = 'mission';
@@ -117,6 +117,8 @@ let msgUntil = 0;
 let msgSticky = '';
 let lastWarnBeep = 0;
 let resultTimer = 0;
+let prevLock = 'off';
+let lastLockFlash = 0;
 
 function show(id, on) { $(id).classList.toggle('hidden', !on); }
 
@@ -133,7 +135,8 @@ function startMission(id, demo) {
   ['title', 'pause', 'result', 'help'].forEach((o) => show(o, false));
   show('flightui', true);
   show('touch', isTouch);
-  $('mission-name').textContent = sim.sc.title;
+  const [mNo, mName] = sim.sc.title.split(' ／ ');
+  $('mission-name').innerHTML = `${mNo}<span class="mname"> ／ ${mName}</span>`;
   updateBadges();
   const toast = $('briefing-toast');
   toast.innerHTML = `<h4>${demo ? 'DEMO ／ 自動操縦' : 'BRIEFING'}</h4>${sim.sc.briefing}` +
@@ -145,9 +148,12 @@ function startMission(id, demo) {
 
 function updateBadges() {
   const b = [];
-  b.push(`<span>${CAM_NAMES[camMode]}</span>`);
-  b.push(`<span>SAS ${inputState.sas ? 'ON' : 'OFF'}</span>`);
+  b.push(`<span class="opt">${CAM_NAMES[camMode]}</span>`);
+  b.push(`<span class="opt">SAS ${inputState.sas ? 'ON' : 'OFF'}</span>`);
+  b.push(`<span class="${inputState.spinLock ? 'lock' : 'opt'}">回転ロック ${inputState.spinLock ? 'ON' : 'OFF'}</span>`);
   if (autopilot) b.push('<span class="auto">AUTO</span>');
+  const lockBtn = document.querySelector('#touch [data-key="KeyL"]');
+  if (lockBtn) lockBtn.classList.toggle('on', inputState.spinLock);
   if (!audio.musicOn) b.push('<span>BGM OFF</span>');
   $('badges').innerHTML = b.join('');
 }
@@ -189,7 +195,7 @@ function showResult() {
     body.innerHTML =
       `<div class="rank">${usedAuto ? 'AUTO' : r.rank}</div>` +
       `<table class="stats">` +
-      `<tr><td>スコア</td><td>${r.score}${usedAuto ? '（自動操縦使用・記録なし）' : ''}</td></tr>` +
+      `<tr><td>スコア</td><td>${r.score}${usedAuto ? '（自動操縦使用・記録なし）' : r.assist ? '（回転ロック使用 ×0.9）' : ''}</td></tr>` +
       `<tr><td>所要時間</td><td>${Math.floor(r.time / 60)}分${Math.floor(r.time % 60)}秒</td></tr>` +
       `<tr><td>推進剤の使用量</td><td>${Math.round(r.fuelUsed * 100)} %</td></tr>` +
       `<tr><td>船体</td><td>${Math.round(r.hull * 100)} %</td></tr>` +
@@ -214,6 +220,11 @@ onKey('KeyP', () => (mode === 'play' ? pause(true) : mode === 'paused' ? pause(f
 onKey('KeyC', () => { camMode = (camMode + 1) % 3; updateBadges(); if (mode === 'play') flash(CAM_NAMES[camMode], '', 1200); });
 onKey('KeyH', () => { if (mode === 'play') $('keyhelp').classList.toggle('hidden'); });
 onKey('KeyT', () => { inputState.sas = !inputState.sas; updateBadges(); if (mode === 'play') flash(`SAS ${inputState.sas ? 'ON' : 'OFF'}`, '', 1200); });
+onKey('KeyL', () => {
+  inputState.spinLock = !inputState.spinLock;
+  updateBadges();
+  if (mode === 'play') flash(inputState.spinLock ? `回転ロック ON（回転差 ${SPIN_LOCK_CAPTURE_RPM} rpm 以内で作動）` : '回転ロック OFF', '', 1800);
+});
 onKey('KeyM', () => { audio.start(); audio.setMusic(!audio.musicOn); updateBadges(); });
 onKey('KeyZ', () => {
   if (mode !== 'play') return;
@@ -305,6 +316,13 @@ function frame(now) {
   }
 
   const tm = sim.telemetry();
+  // 回転ロックが作動した瞬間を知らせる（微調整で何度も切り替わるときは鳴らしすぎない）
+  if (mode === 'play' && tm.spinLock === 'engaged' && prevLock !== 'engaged' && now - lastLockFlash > 4000) {
+    audio.beep(1500, 0.05, 2);
+    flash('回転ロック作動：ステーションの回転を保持中', '', 1800);
+    lastLockFlash = now;
+  }
+  prevLock = tm.spinLock;
 
   // 案内メッセージ
   if (mode === 'play' && sim.status === 'flying' && now > msgUntil) {
