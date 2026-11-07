@@ -89,6 +89,7 @@ export class Maneuver {
   isOrbitStage() { return this.stage === 'outbound' || this.stage === 'return'; }
 
   applyStageUi() {
+    $('mmsg').textContent = ''; // 前の場面の案内を残さない
     const orbit = this.view === 'orbit';
     document.querySelectorAll('#mtouch .orbit').forEach((e) => e.classList.toggle('hidden', !orbit));
     document.querySelectorAll('#mtouch .lander').forEach((e) => e.classList.toggle('hidden', orbit));

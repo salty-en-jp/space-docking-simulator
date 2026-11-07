@@ -80,8 +80,11 @@ export class OrbitView {
     c.setLineDash([]);
     c.font = '12px "Zen Kaku Gothic New", sans-serif';
     if (!this.zoom) {
+      // 名前が長くても惑星・母船の名前と重ならないよう、真下に中央揃えで
       c.fillStyle = 'rgba(255,220,170,0.8)';
-      c.fillText(NAMES.blackHole, X(0) + R(0.8) * 0.72, Y(0) - R(0.8) * 0.72);
+      c.textAlign = 'center';
+      c.fillText(NAMES.blackHole, X(0), Y(0) + Math.max(R(0.75), 30) + 14);
+      c.textAlign = 'left';
     }
 
     // 予測軌道
