@@ -9,11 +9,11 @@ for (const sc of Object.values(SCENARIOS)) {
   const sim = new Sim(sc);
   const ap = new Autopilot();
   let bumps = 0;
-  while (sim.status === 'flying' && sim.t < (sc.tumble ? 2500 : 900)) {
+  while (sim.status === 'flying' && sim.t < (sc.group === 'training' ? 4000 : sc.tumble ? 2500 : 900)) {
     sim.step(DT, ap.update(sim));
     for (const e of sim.events.splice(0)) if (e.type === 'bump') { bumps++; console.log('  bump:', e.reasons.join(', ')); }
   }
-  const ok = sim.status === 'docked';
+  const ok = sim.status === 'docked' || sim.status === 'cleared';
   if (!ok) failed++;
   const r = sim.result;
   console.log(`${ok ? 'PASS' : 'FAIL'} ${sc.id}: status=${sim.status} t=${sim.t.toFixed(1)}s fuel=${(sim.fuel / sim.fuelMax * 100).toFixed(0)}% bumps=${bumps}` +
@@ -126,5 +126,38 @@ for (const id of ['extreme', 'dorsalx']) {
   for (let i = 0; i < 2000 * 120; i++) { b.step(1 / 120, idle({ sas: false })); maxUp = Math.max(maxUp, b.pos.y); }
   check('orbital: prograde burn rises and ends up behind', maxUp > 100 && b.pos.z > z0,
     `max rise ${maxUp.toFixed(0)} m, along-track change ${(z0 - b.pos.z).toFixed(0)} m (negative = fell behind)`);
+}
+
+// ---- 訓練編: 何もしなければクリアにならない／目標点の条件 ----
+for (const id of ['tut1', 'tut2', 'tut3']) {
+  const s = new Sim(SCENARIOS[id]);
+  for (let i = 0; i < 120 * 60; i++) s.step(1 / 120, idle({ sas: false }));
+  check(`${id}: not cleared by doing nothing`, s.status === 'flying', `status=${s.status} goalDist=${s.goalDist().toFixed(0)} m`);
+}
+{
+  // T2: V-bar から20m上の軌道にいると、噴射しなくても後ろへ流される（教える内容そのもの）
+  const s = new Sim(SCENARIOS.tut2);
+  const z0 = s.pos.z, y0 = s.pos.y;
+  for (let i = 0; i < 120 * 400; i++) s.step(1 / 120, idle({ sas: false }));
+  check('tut2: offset above V-bar drifts backward at constant height', s.pos.z - z0 > 12 && Math.abs(s.pos.y - y0) < 0.5,
+    `drift ${(s.pos.z - z0).toFixed(1)} m in 400 s, height change ${(s.pos.y - y0).toFixed(2)} m`);
+  // 手順が順に進む
+  const t = new Sim(SCENARIOS.tut1);
+  const tm = () => t.telemetry();
+  const seq = [t.updateTutorial(tm()).index];
+  t.vel.z -= 0.05; seq.push(t.updateTutorial(tm()).index);
+  t.vel.set(0, 0, 0); seq.push(t.updateTutorial(tm()).index);
+  t.vel.y -= 0.05; seq.push(t.updateTutorial(tm()).index);
+  // T1: 下へ（地球側へ）ちょうど Δy·n/4 だけ押すと、半周回後に目標点の近くへ着く（R-bar ホップ）
+  const h = new Sim(SCENARIOS.tut1);
+  const dy = h.pos.z - h.goalPos().z;
+  h.vel.y -= (dy * h.orbitN) / 4;
+  const half = Math.PI / h.orbitN;
+  // 目標点に着くとクリアになり時間が止まるので、status も見てループを抜ける
+  let minMiss = Infinity;
+  while (h.t < half && h.status === 'flying') { h.step(1 / 120, idle({ sas: false })); minMiss = Math.min(minMiss, h.goalDist()); }
+  check('tut1: a downward hop of Δv = Δy·n/4 reaches the goal in about half an orbit', h.status === 'cleared' || minMiss < 20,
+    `Δv=${((dy * h.orbitN) / 4).toFixed(3)} m/s, half orbit=${half.toFixed(0)} s, arrived at t=${h.t.toFixed(0)} s, status=${h.status}`);
+  check('tut1: steps advance in order', seq.join(',') === '0,1,2,3', `steps=${seq.join(',')}`);
 }
 process.exit(failed ? 1 : 0);

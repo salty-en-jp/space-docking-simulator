@@ -153,6 +153,77 @@ export const SCENARIOS = {
   },
 };
 
+// ---------------- 訓練編（1つのステージで1つの物理を体験する） ----------------
+// steps: 画面に出す手順。done が真になると次へ進む（案内だけで、クリアの条件ではない）
+// goal: クリアの条件（目標点 pos の半径 radius 以内に maxSpeed 以下で入り、holdSec 秒留まる）
+const ORBIT_LEO = { n: 0.00113 };
+const vForward = (s) => -s.vel.z; // 進行方向（V-bar）の速さ
+const TRAINING = {
+  tut1: {
+    id: 'tut1', group: 'training',
+    title: 'TRAINING T1 ／ 前に噴くと後ろへ',
+    briefing: '軌道の上では、前に噴射すると高度が上がって、結果的に後ろへ下がる。下へ噴射すると前へ進む。左上の軌道図で確かめながら、ステーション後方150mの目標点（緑）へ。',
+    spinRpm: 2, wobbleDeg: 0, wobblePeriod: 60, timeLimit: 0, fuel: 40, farLimit: 3000,
+    orbital: ORBIT_LEO,
+    start: { dist: 386, lateral: [0, 0], misalignDeg: 0, drift: [0, 0, 0] },
+    goal: { pos: [0, 0, 150], radius: 20, maxSpeed: 0.3, holdSec: 0 },
+    idealDv: 0.14,
+    tol: { closing: 0.5, lateral: 0.6, align: 5, spin: 1.0, phase: 15, rate: 2.0 },
+    steps: [
+      { text: '① W（前）を軽く押してみよう。左上の軌道図の予測線（緑）に注目', done: (s) => vForward(s) > 0.03 },
+      { text: '② 予測線が上へ、そして後ろへ曲がった！ 前に押すと上がって後ろへ下がる。S（後）で速度を元に戻そう', done: (s) => s.vel.length() < 0.015 },
+      { text: '③ 今度は F（下）を軽く押そう。下へ押すと、前へ進む（予測線を確認）', done: (s) => s.vel.y < -0.03 },
+      { text: '④ 予測線が目標点（緑の四角）を通るよう少しずつ調整して、「.」で時間加速。着いたら止まろう（0.3 m/s 以下）', done: () => false },
+    ],
+  },
+  tut2: {
+    id: 'tut2', group: 'training',
+    title: 'TRAINING T2 ／ V-bar 待機',
+    briefing: '進行方向の軸（V-bar）の上なら、噴射しなくてもその場に留まれる。上下に少しでもずれると流されていく。待機点（緑）に2分間留まろう。',
+    spinRpm: 2, wobbleDeg: 0, wobblePeriod: 60, timeLimit: 0, fuel: 40, farLimit: 3000,
+    orbital: ORBIT_LEO,
+    // 20m上の「自然な」軌道（高い軌道ほど遅いので、後ろへ 1.5·n·20 ≈ 0.034 m/s で流れる）
+    start: { dist: 106, lateral: [0, 20], misalignDeg: 0, drift: [0, 0, 1.5 * ORBIT_LEO.n * 20] },
+    goal: { pos: [0, 0, 120], radius: 10, maxSpeed: 0.1, holdSec: 120 },
+    tol: { closing: 0.5, lateral: 0.6, align: 5, spin: 1.0, phase: 15, rate: 2.0 },
+    steps: [
+      { text: '① まずは何もせず「.」で時間加速。待機点より20m上にいると…', done: (s, st) => Math.abs(s.pos.z - st.z0) > 12 },
+      { text: '② 後ろへ流されていく！ V-bar から上下にずれると流される。待機点（緑）へ戻って止まろう', done: (s) => s.goalDist() < 10 && s.vel.length() < 0.1 },
+      { text: '③ V-bar 上なら噴射しなくても留まれる。そのまま2分間（時間加速OK）', done: () => false },
+    ],
+  },
+  tut3: {
+    id: 'tut3', group: 'training',
+    title: 'TRAINING T3 ／ V-bar 接近',
+    briefing: '800m後方から、時間加速と小刻みな噴射で待機点（ステーション後方150m）へ。上下にずれると流されるので、軌道図の予測線を V-bar の上に保とう。',
+    spinRpm: 2, wobbleDeg: 0, wobblePeriod: 60, timeLimit: 0, fuel: 60, farLimit: 3000,
+    orbital: ORBIT_LEO,
+    start: { dist: 786, lateral: [0, 0], misalignDeg: 0, drift: [0, 0, 0] },
+    goal: { pos: [0, 0, 150], radius: 10, maxSpeed: 0.2, holdSec: 0 },
+    tol: { closing: 0.5, lateral: 0.6, align: 5, spin: 1.0, phase: 15, rate: 2.0 },
+    steps: [
+      { text: '① W で軽く前へ（0.5 m/s 程度）。予測線が上へ曲がるのを確認', done: (s) => vForward(s) > 0.2 },
+      { text: '② 時間加速しながら、予測線が上下にずれたら R/F で V-bar の上へ戻す', done: (s) => s.goalDist() < 100 },
+      { text: '③ 近づいたら S で減速。0.2 m/s 以下で待機点（緑）へ', done: () => false },
+    ],
+  },
+  tut4: {
+    id: 'tut4', group: 'training',
+    title: 'TRAINING T4 ／ 反転を見る',
+    briefing: 'ゆっくり回るステーション（毎分2回転）が、ときどき軸ごと反転する。反転中や背中を向けているときは離れて待ち、ポートがこちらを向いた「窓」の間に結合しよう。軌道力学はなし。',
+    spinRpm: 2, rollAcc: 0.3, wobbleDeg: 0, wobblePeriod: 60, timeLimit: 0, fuel: 120, farLimit: 1000,
+    tumble: { I: [1.0, 3.0, 1.8], perturb: 1e-3, windowDeg: 8 },
+    start: { dist: 80, lateral: [0, 0], misalignDeg: 3, drift: [0, 0, 0] },
+    tol: { closing: 0.5, lateral: 0.6, align: 5, spin: 1.0, phase: 15, rate: 2.0 },
+    steps: [
+      { text: '① まずは観察。ステーションが軸ごと反転する（右のパネルの「ステーション」に注目）', done: (s, st, tm) => !tm.window.open },
+      { text: '② 反転中・背中向きのときは、中心から50m以上離れて待つ。「.」で時間加速できる', done: (s, st, tm) => tm.window.open },
+      { text: '③ 窓が開いた！ 回転を合わせて（回転ロックが便利）、窓の残り時間内に結合しよう', done: () => false },
+    ],
+  },
+};
+Object.assign(SCENARIOS, TRAINING);
+
 const X = new THREE.Vector3(1, 0, 0);
 const Y = new THREE.Vector3(0, 1, 0);
 const Z = new THREE.Vector3(0, 0, 1);
@@ -222,6 +293,10 @@ export class Sim {
     this.angBody = new THREE.Vector3();
     this.spinLockState = 'off'; // off | armed（待機） | engaged（作動中） | manual（手動ロール中）
     this.usedAssist = false;
+    this.dvUsed = 0;     // 並進に使った Δv [m/s]
+    this.goalTimer = 0;  // 目標点に留まっている時間
+    this.tutStep = 0;
+    this.tutState = {};
 
     const a = this.axis(0);
     const P = this.portPos(0);
@@ -236,6 +311,22 @@ export class Sim {
     this.vel = new THREE.Vector3(...s.drift);
     this.w = new THREE.Vector3(0.004, -0.006, 0.01);
     this.prevNoseZ = Infinity;
+    this.tutState.z0 = this.pos.z;
+  }
+
+  // ---- 訓練編 ----
+  goalPos() {
+    return this.sc.goal ? new THREE.Vector3(...this.sc.goal.pos) : null;
+  }
+  goalDist() {
+    return this.sc.goal ? this.pos.distanceTo(this.goalPos()) : Infinity;
+  }
+  // 手順を進め、今の案内文を返す（表示側から呼ぶ）
+  updateTutorial(tm) {
+    const steps = this.sc.steps;
+    if (!steps) return null;
+    while (this.tutStep < steps.length - 1 && steps[this.tutStep].done(this, this.tutState, tm)) this.tutStep++;
+    return { text: steps[this.tutStep].text, index: this.tutStep, total: steps.length };
   }
 
   // ---- ステーションの姿勢 ----
@@ -431,6 +522,7 @@ export class Sim {
       }
     }
 
+    this.dvUsed += acc.length() * dt;
     if (hasFuel) {
       this.fuel = Math.max(0, this.fuel - (acc.length() + 0.5 * ang.length()) * dt);
     }
@@ -449,6 +541,12 @@ export class Sim {
     }
 
     this.checkContact();
+    if (this.sc.goal && this.status === 'flying') {
+      const g = this.sc.goal;
+      const inside = this.goalDist() < g.radius && this.vel.length() < g.maxSpeed;
+      this.goalTimer = inside ? this.goalTimer + dt : 0;
+      if (inside && this.goalTimer >= g.holdSec) this.completeGoal(); // 入っていないのにクリアにならないように
+    }
 
     if (this.status === 'flying') {
       if (this.sc.timeLimit && this.t >= this.sc.timeLimit) {
@@ -572,6 +670,12 @@ export class Sim {
       this.hull = 0;
       this.fail('crashed', '度重なる接触で船体が破損した');
     }
+  }
+
+  completeGoal() {
+    this.status = 'cleared';
+    this.result = { time: this.t, fuelUsed: 1 - this.fuel / this.fuelMax, dvUsed: this.dvUsed, idealDv: this.sc.idealDv };
+    this.events.push({ type: 'cleared' });
   }
 
   completeDocking(tm, checks) {

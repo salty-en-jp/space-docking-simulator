@@ -68,12 +68,23 @@ export class Autopilot {
     return ctl;
   }
 
+  // 訓練編の目標点: 目標点へ向かって止まる（姿勢はSASで保持）
+  updateGoal(sim, ctl) {
+    const d = sim.goalPos().sub(sim.pos);
+    const dist = d.length();
+    const vDes = dist > 0.01 ? d.multiplyScalar(Math.min(1.0, 0.02 * dist) / dist) : new THREE.Vector3();
+    this.translate(sim, ctl, vDes);
+    ctl.sas = true;
+    return ctl;
+  }
+
   update(sim) {
     const tm = sim.telemetry();
     const { a, vP } = tm;
     const tol = sim.sc.tol;
     const ctl = { tx: 0, ty: 0, tz: 0, rx: 0, ry: 0, rz: 0, fine: false, sas: false, killRel: false };
     if (sim.status !== 'flying') return ctl;
+    if (sim.sc.goal) return this.updateGoal(sim, ctl);
     if (sim.track) {
       const r = this.updateTumble(sim, tm, ctl);
       if (r) return r;

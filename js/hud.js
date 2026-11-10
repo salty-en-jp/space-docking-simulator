@@ -17,7 +17,7 @@ export class HUD {
       ['time', '経過時間'], ['left', '残り時間'], ['range', '距離'], ['closing', '接近速度'],
       ['lateral', '横ずれ'], ['align', '軸の角度'], ['target', '目標の回転'], ['ship', '自船の回転'],
       ['spin', '回転差'], ['phase', 'マーカー'], ['rate', '首振り'], ['fuel', '推進剤'], ['hull', '船体'],
-      ['state', 'ステーション'], ['window', '窓'], ['center', '中心まで'], ['warp', '時間加速'],
+      ['goal', '目標点'], ['state', 'ステーション'], ['window', '窓'], ['center', '中心まで'], ['warp', '時間加速'],
     ];
     panel.innerHTML = '';
     // スマホなど小さい画面では隠す補助的な行
@@ -92,6 +92,16 @@ export class HUD {
           c.fillRect(top.x - 2, top.y - 2, 4, 4);
         }
       }
+      // ---- 訓練編の目標点 ----
+      if (sim.sc.goal) {
+        const gp = this.project(sim.goalPos(), camera);
+        if (gp) {
+          c.strokeStyle = OK;
+          c.strokeRect(gp.x - 10, gp.y - 10, 20, 20);
+          c.fillStyle = OK;
+          c.fillText(`目標点 ${sim.goalDist().toFixed(0)}m`, gp.x + 14, gp.y + 4);
+        }
+      }
       // ---- ドッキングポート ----
       const pp = this.project(tm.P, camera);
       if (pp) {
@@ -157,7 +167,13 @@ export class HUD {
       } else {
         ['state', 'window', 'center'].forEach((k) => this.setRow(k, null));
       }
-      this.setRow('warp', sim.orbitN ? `×${opts.warp || 1}` : null);
+      this.setRow('warp', sim.orbitN || sim.track ? `×${opts.warp || 1}` : null);
+      if (sim.sc.goal) {
+        const g = sim.sc.goal, gd = sim.goalDist(), sp = sim.vel.length();
+        const inside = gd < g.radius && sp < g.maxSpeed;
+        const hold = g.holdSec ? ` ${Math.floor(sim.goalTimer)}/${g.holdSec}s` : '';
+        this.setRow('goal', `${gd.toFixed(0)}m ${sp.toFixed(2)}m/s${hold}`, inside ? 'ok' : gd < g.radius ? 'warn' : '');
+      } else this.setRow('goal', null);
     }
   }
 
@@ -304,6 +320,14 @@ export class HUD {
     c.beginPath();
     pts.forEach(([a, b], i) => (i ? c.lineTo(cx + a * sc, cy - b * sc) : c.moveTo(cx + a * sc, cy - b * sc)));
     c.stroke();
+    // 目標点（訓練編）
+    if (sim.sc.goal) {
+      const [gx, gy, gz] = sim.sc.goal.pos;
+      c.strokeStyle = OK;
+      const r = Math.max(3, sim.sc.goal.radius * sc);
+      c.strokeRect(cx - gz * sc - r, cy - gy * sc - r, r * 2, r * 2);
+      void gx;
+    }
     // ステーションと自船
     c.fillStyle = '#e8f0ff';
     c.fillRect(cx - 2, cy - 2, 4, 4);

@@ -65,6 +65,21 @@ hlTarget.position.set(0, 0, 30);
 ship.add(hlTarget);
 headlight.target = hlTarget;
 
+// 訓練編の目標点（緑のリングと光の柱）
+const goalMarker = new THREE.Group();
+{
+  const mat = new THREE.MeshBasicMaterial({ color: 0x7cffb2, transparent: true, opacity: 0.8 });
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(10, 0.25, 8, 48), mat);
+  goalMarker.add(ring);
+  const ring2 = ring.clone();
+  ring2.rotation.y = Math.PI / 2;
+  goalMarker.add(ring2);
+  const core = new THREE.Mesh(new THREE.SphereGeometry(0.8, 12, 12), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+  goalMarker.add(core);
+  goalMarker.visible = false;
+  scene.add(goalMarker);
+}
+
 // ---------------- UI ----------------
 const hud = new HUD($('hud'), $('panel'));
 const audio = new AudioEngine();
@@ -98,7 +113,18 @@ function buildMissionList() {
   const box = $('missions');
   box.innerHTML = '';
   const stars = { training: '★☆☆☆', standard: '★★☆☆', advanced: '★★★☆', extreme: '★★★★', dorsal: '★★☆☆', dorsalx: '★★★★', tumble: '★★★★' };
+  const tbox = $('tmissions');
+  tbox.innerHTML = '';
   for (const sc of Object.values(SCENARIOS).sort((a, b) => a.title.localeCompare(b.title))) {
+    if (sc.group === 'training') {
+      const b = document.createElement('button');
+      b.className = 'mission';
+      const done = best[sc.id] ? '<span class="best">CLEAR</span>' : '';
+      b.innerHTML = `${done}<div class="t">${sc.title}</div><div class="d">${sc.briefing}</div>`;
+      b.onclick = () => startMission(sc.id, false);
+      tbox.appendChild(b);
+      continue;
+    }
     const b = document.createElement('button');
     b.className = 'mission';
     const bst = best[sc.id] ? `<span class="best">BEST ${best[sc.id].rank} ${best[sc.id].score}</span>` : '';
@@ -142,9 +168,9 @@ const WARPS = [1, 2, 5, 10, 25, 50];
 let warpIdx = 0;
 let prevWindowOpen = null;
 function warpCap() {
-  if (!sim.orbitN) return 0;
+  if (!sim.orbitN && !sim.track) return 0;
   const d = sim.pos.length();
-  const cap = d < 50 ? 1 : d < 300 ? 5 : 50;
+  const cap = d < 50 ? 1 : d < 150 ? 10 : 50;
   return WARPS.filter((w) => w <= cap).length - 1;
 }
 let lastLockFlash = 0;
@@ -161,7 +187,9 @@ function startMission(id, demo) {
   camMode = 0;
   warpIdx = 0;
   prevWindowOpen = null;
-  document.querySelectorAll('#touch .orbital').forEach((e) => e.classList.toggle('hidden', !sim.orbitN));
+  document.querySelectorAll('#touch .orbital').forEach((e) => e.classList.toggle('hidden', !sim.orbitN && !sim.track));
+  goalMarker.visible = !!sim.sc.goal;
+  if (sim.sc.goal) { goalMarker.position.set(...sim.sc.goal.pos); goalMarker.scale.setScalar(sim.sc.goal.radius / 10); }
   acc = 0;
   resultTimer = 0;
   mode = 'play';
@@ -220,11 +248,30 @@ function pause(on) {
   show('pause', on);
 }
 
+// 訓練編の次のステージ
+function nextTrainingId() {
+  const ids = Object.values(SCENARIOS).filter((s) => s.group === 'training').map((s) => s.id).sort();
+  const i = ids.indexOf(sim.sc.id);
+  return i >= 0 && i < ids.length - 1 ? ids[i + 1] : null;
+}
+
 function showResult() {
   mode = 'result';
   const r = sim.result;
   const body = $('res-body');
-  if (sim.status === 'docked') {
+  const nextTraining = nextTrainingId();
+  $('btn-next').classList.toggle('hidden', !(nextTraining && (sim.status === 'cleared' || (sim.sc.group === 'training' && sim.status === 'docked'))));
+  if (sim.sc.group === 'training' && (sim.status === 'cleared' || sim.status === 'docked') && !usedAuto) saveBest(sim.sc.id, 1, 'CLEAR');
+  if (sim.status === 'cleared') {
+    $('res-title').textContent = 'TRAINING CLEAR';
+    const ideal = r.idealDv ? `<tr><td>理想的な Δv（下へのホップ）</td><td>約 ${r.idealDv.toFixed(2)} m/s</td></tr>` : '';
+    body.innerHTML =
+      `<div class="rank">${usedAuto ? 'AUTO' : 'CLEAR'}</div><table class="stats">` +
+      `<tr><td>所要時間（船内）</td><td>${Math.floor(r.time / 60)}分${Math.floor(r.time % 60)}秒</td></tr>` +
+      `<tr><td>使った Δv（並進）</td><td>${r.dvUsed.toFixed(2)} m/s</td></tr>` + ideal +
+      `<tr><td>推進剤の使用量</td><td>${Math.round(r.fuelUsed * 100)} %</td></tr></table>` +
+      (nextTraining ? `<p class="hint">次は「${SCENARIOS[nextTraining].title}」。</p>` : '<p class="hint">訓練は以上！ MISSION 07 に挑戦しよう。</p>');
+  } else if (sim.status === 'docked') {
     $('res-title').textContent = 'DOCKING COMPLETE';
     if (!usedAuto) saveBest(sim.sc.id, r.score, r.rank);
     const rows = r.checks.map((c) => `<tr><td>${c.label}</td><td>${c.value.toFixed(2)} ${c.unit} <span class="ok">／ ${c.limit}</span></td></tr>`).join('');
@@ -268,9 +315,9 @@ onKey('KeyV', () => {
   updateBadges();
   flash(inputState.bodyFrame ? '操作: 機体基準（W で機首方向、→ でステーションと同じ向きに回転）' : '操作: ポート基準（W でポート方向、Q/E で回転）', 'warn', 2500);
 });
-onKey('Comma', () => { if (mode === 'play' && sim.orbitN) { warpIdx = Math.max(0, warpIdx - 1); } });
+onKey('Comma', () => { if (mode === 'play' && (sim.orbitN || sim.track)) { warpIdx = Math.max(0, warpIdx - 1); } });
 onKey('Period', () => {
-  if (mode !== 'play' || !sim.orbitN) return;
+  if (mode !== 'play' || (!sim.orbitN && !sim.track)) return;
   if (warpIdx >= warpCap()) { flash(sim.pos.length() < 50 ? 'ステーションの近くでは時間加速できない' : `ここでは ×${WARPS[warpCap()]} まで`, 'warn', 1500); return; }
   warpIdx++;
 });
@@ -288,6 +335,7 @@ $('btn-help').onclick = () => show('help', true);
 $('btn-help-close').onclick = () => show('help', false);
 $('btn-resume').onclick = () => (maneuver.active ? maneuver.setPaused(false) : pause(false));
 $('btn-restart').onclick = () => (maneuver.active ? maneuver.restart() : startMission(sim.sc.id, false));
+$('btn-next').onclick = () => { const n = nextTrainingId(); if (n) startMission(n, false); };
 $('btn-retry').onclick = () => (maneuver.active ? maneuver.restart() : startMission(sim.sc.id, false));
 $('btn-menu').onclick = toTitle;
 $('btn-menu2').onclick = toTitle;
@@ -361,6 +409,10 @@ function frame(now) {
       audio.triumph();
       flash('DOCKED', 'big', 5000);
       resultTimer = now + 4000;
+    } else if (e.type === 'cleared') {
+      audio.triumph();
+      flash('TRAINING CLEAR', 'big', 4000);
+      resultTimer = now + 3000;
     } else if (e.type === 'bump') {
       audio.clunk();
       audio.beep(660, 0.1, 2);
@@ -400,10 +452,13 @@ function frame(now) {
     const tol = sim.sc.tol;
     let hint = '', cls = '';
     const w = tm.window;
+    const tut = sim.updateTutorial(tm);
     if (w && tm.centerDist < 52 && (!w.open || w.remaining < 15)) {
       hint = w.open ? 'まもなく反転する！ ステーションから離れて！（中心から50m以上）' : '反転中！ 回転するリングに当たる。中心から50m以上離れて！';
       cls = 'bad';
       if (now - lastWarnBeep > 900) { audio.beep(900, 0.08); lastWarnBeep = now; }
+    } else if (tut) {
+      hint = `【手順 ${tut.index + 1}/${tut.total}】${tut.text}`;
     } else if (w && tm.centerDist > 300) {
       hint = '遠距離：時間加速（「.」/ 速く）で接近。前に噴射すると上がって後ろへ下がる（左上の軌道図）';
     } else if (w && !w.open) {
