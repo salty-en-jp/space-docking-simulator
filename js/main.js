@@ -97,8 +97,8 @@ function saveBest(id, score, rank) {
 function buildMissionList() {
   const box = $('missions');
   box.innerHTML = '';
-  const stars = { training: '★☆☆☆', standard: '★★☆☆', advanced: '★★★☆', extreme: '★★★★', dorsal: '★★☆☆', dorsalx: '★★★★' };
-  for (const sc of Object.values(SCENARIOS)) {
+  const stars = { training: '★☆☆☆', standard: '★★☆☆', advanced: '★★★☆', extreme: '★★★★', dorsal: '★★☆☆', dorsalx: '★★★★', tumble: '★★★★' };
+  for (const sc of Object.values(SCENARIOS).sort((a, b) => a.title.localeCompare(b.title))) {
     const b = document.createElement('button');
     b.className = 'mission';
     const bst = best[sc.id] ? `<span class="best">BEST ${best[sc.id].rank} ${best[sc.id].score}</span>` : '';
@@ -137,6 +137,16 @@ let msgSticky = '';
 let lastWarnBeep = 0;
 let resultTimer = 0;
 let prevLock = 'off';
+// 時間加速（軌道力学のステージのみ）
+const WARPS = [1, 2, 5, 10, 25, 50];
+let warpIdx = 0;
+let prevWindowOpen = null;
+function warpCap() {
+  if (!sim.orbitN) return 0;
+  const d = sim.pos.length();
+  const cap = d < 50 ? 1 : d < 300 ? 5 : 50;
+  return WARPS.filter((w) => w <= cap).length - 1;
+}
 let lastLockFlash = 0;
 
 function show(id, on) { $(id).classList.toggle('hidden', !on); }
@@ -149,6 +159,9 @@ function startMission(id, demo) {
   autopilot = demo ? new Autopilot() : null;
   usedAuto = demo;
   camMode = 0;
+  warpIdx = 0;
+  prevWindowOpen = null;
+  document.querySelectorAll('#touch .orbital').forEach((e) => e.classList.toggle('hidden', !sim.orbitN));
   acc = 0;
   resultTimer = 0;
   mode = 'play';
@@ -255,6 +268,12 @@ onKey('KeyV', () => {
   updateBadges();
   flash(inputState.bodyFrame ? '操作: 機体基準（W で機首方向、→ でステーションと同じ向きに回転）' : '操作: ポート基準（W でポート方向、Q/E で回転）', 'warn', 2500);
 });
+onKey('Comma', () => { if (mode === 'play' && sim.orbitN) { warpIdx = Math.max(0, warpIdx - 1); } });
+onKey('Period', () => {
+  if (mode !== 'play' || !sim.orbitN) return;
+  if (warpIdx >= warpCap()) { flash(sim.pos.length() < 50 ? 'ステーションの近くでは時間加速できない' : `ここでは ×${WARPS[warpCap()]} まで`, 'warn', 1500); return; }
+  warpIdx++;
+});
 onKey('KeyM', () => { audio.start(); audio.setMusic(!audio.musicOn); updateBadges(); });
 onKey('KeyZ', () => {
   if (mode !== 'play') return;
@@ -293,7 +312,8 @@ function updateCamera() {
     camera.up.copy(u);
     ship.visible = false;
   } else {
-    const W = sim.wobbleQuat(sim.t);
+    // 転がるステーションではカメラが一緒に回らないよう、ぶれの補正はしない
+    const W = sim.track ? new THREE.Quaternion() : sim.wobbleQuat(sim.t);
     camPos.set(34, 16, PORT_Z + 36).applyQuaternion(W);
     camLook.copy(sim.portPos(sim.t)).lerp(sim.pos, 0.5);
     camera.up.set(0, 1, 0);
@@ -316,7 +336,10 @@ function frame(now) {
 
   if (mode === 'play' || mode === 'title' || mode === 'result') {
     const manual = mode === 'play' ? readControls() : null;
-    acc += dtReal;
+    // 時間加速: 操作したら等倍に戻す。近づいたら上限を下げる
+    if (manual && (manual.tx || manual.ty || manual.tz || manual.rx || manual.ry || manual.rz || manual.rotStop || manual.realign || manual.killRel)) warpIdx = 0;
+    warpIdx = Math.min(warpIdx, Math.max(0, warpCap()));
+    acc += dtReal * (mode === 'play' ? WARPS[warpIdx] : 1);
     while (acc >= DT) {
       let ctl = manual;
       if (autopilot || !ctl) ctl = autopilot ? autopilot.update(sim) : { tx: 0, ty: 0, tz: 0, rx: 0, ry: 0, rz: 0, sas: true };
@@ -362,11 +385,30 @@ function frame(now) {
   }
   prevLock = tm.spinLock;
 
+  // 転がるステーション: 窓が開いた瞬間を知らせ、時間加速を止める
+  if (mode === 'play' && tm.window && sim.status === 'flying') {
+    if (prevWindowOpen === false && tm.window.open) {
+      warpIdx = 0;
+      audio.beep(1000, 0.08, 2);
+      flash(`窓が開いた！ ポートがこちらを向いている（約${tm.window.remaining.toFixed(0)}秒）`, '', 2500);
+    }
+    prevWindowOpen = tm.window.open;
+  }
+
   // 案内メッセージ
   if (mode === 'play' && sim.status === 'flying' && now > msgUntil) {
     const tol = sim.sc.tol;
     let hint = '', cls = '';
-    if (tm.axial < 12 && tm.closing > tol.closing * 1.2) {
+    const w = tm.window;
+    if (w && tm.centerDist < 52 && (!w.open || w.remaining < 15)) {
+      hint = w.open ? 'まもなく反転する！ ステーションから離れて！（中心から50m以上）' : '反転中！ 回転するリングに当たる。中心から50m以上離れて！';
+      cls = 'bad';
+      if (now - lastWarnBeep > 900) { audio.beep(900, 0.08); lastWarnBeep = now; }
+    } else if (w && tm.centerDist > 300) {
+      hint = '遠距離：時間加速（「.」/ 速く）で接近。前に噴射すると上がって後ろへ下がる（左上の軌道図）';
+    } else if (w && !w.open) {
+      hint = `ポートが向こうを向いている。中心から50m以上で待機（次の窓まで ${Math.min(999, w.next).toFixed(0)} 秒）`;
+    } else if (tm.axial < 12 && tm.closing > tol.closing * 1.2) {
       hint = '接近速度が速すぎる！ S で減速'; cls = 'bad';
       if (now - lastWarnBeep > 700) { audio.beep(1200, 0.06); lastWarnBeep = now; }
     } else if (tm.axial < 6 && Math.abs(tm.dSpinRpm) > tol.spin) {
@@ -400,7 +442,7 @@ function frame(now) {
   renderer.render(scene, camera);
   const touchEl = $('touch');
   const touchTop = isTouch && !touchEl.classList.contains('hidden') ? touchEl.getBoundingClientRect().top : innerHeight;
-  hud.draw(sim, tm, camera, { visible: mode === 'play' || mode === 'paused', bottom: touchTop, spinKeys: sim.spinKeys(inputState.bodyFrame) });
+  hud.draw(sim, tm, camera, { visible: mode === 'play' || mode === 'paused', bottom: touchTop, spinKeys: sim.spinKeys(inputState.bodyFrame), warp: WARPS[warpIdx], mapTop: 44 });
 
   // 音
   const tension = sim.status === 'flying' ? Math.min(1, Math.max(0, 1 - tm.axial / 60)) * 0.7 + (sim.sc.timeLimit ? 0.3 : 0) : sim.status === 'docked' ? 0 : 0.2;

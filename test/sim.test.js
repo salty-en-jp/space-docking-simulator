@@ -9,7 +9,7 @@ for (const sc of Object.values(SCENARIOS)) {
   const sim = new Sim(sc);
   const ap = new Autopilot();
   let bumps = 0;
-  while (sim.status === 'flying' && sim.t < 900) {
+  while (sim.status === 'flying' && sim.t < (sc.tumble ? 2500 : 900)) {
     sim.step(DT, ap.update(sim));
     for (const e of sim.events.splice(0)) if (e.type === 'bump') { bumps++; console.log('  bump:', e.reasons.join(', ')); }
   }
@@ -87,5 +87,44 @@ for (const id of ['extreme', 'dorsalx']) {
   const s4 = new Sim(SCENARIOS.dorsal);
   s4.step(1 / 120, idle({ ry: 1, bodyFrame: true }));
   check('top port body frame: → spins with station', s4.w.dot(s4.axis(s4.t)) > 0.002 && s4.spinKeys(true)[0] === '→', `w·a=${s4.w.dot(s4.axis(s4.t)).toFixed(4)}`);
+}
+
+// ---- 転がるステーション（オイラー方程式） ----
+{
+  const s = new Sim(SCENARIOS.tumble);
+  const i0 = s.track.invariants(0), i1 = s.track.invariants(1500);
+  check('tumble: energy and |L| conserved', Math.abs(i1.energy / i0.energy - 1) < 1e-9 && Math.abs(i1.L / i0.L - 1) < 1e-9,
+    `dE=${(i1.energy / i0.energy - 1).toExponential(1)} dL=${(i1.L / i0.L - 1).toExponential(1)}`);
+  s.scanWindows(1500);
+  const lens = s.windows.slice(1, -1).map(([a, b]) => b - a);
+  // 最初の窓は時刻0の途中から始まるので、間隔の比較は2つ目以降で
+  const gaps = s.windows.slice(2).map(([a], i) => a - s.windows[i + 1][0]);
+  check('tumble: port flips and faces back periodically (Dzhanibekov)', s.windows.length >= 5 && Math.min(...lens) > 80 && Math.max(...gaps) - Math.min(...gaps) < 2,
+    `windows=${s.windows.length} length≈${lens[0]?.toFixed(0)}s cycle≈${gaps[0]?.toFixed(0)}s`);
+}
+
+// ---- 軌道力学（CW方程式） ----
+{
+  // 噴射なしの漂流が、CW方程式の解析解と一致する（x: 地球と反対向き = Y, y: 進行方向 = -Z）
+  const s = new Sim(SCENARIOS.tumble);
+  const n = s.orbitN;
+  const x0 = s.pos.y, y0 = -s.pos.z, xd0 = s.vel.y, yd0 = -s.vel.z;
+  const T = 600;
+  for (let i = 0; i < T * 120; i++) s.step(1 / 120, idle({ sas: false }));
+  const nt = n * s.t, c = Math.cos(nt), sn = Math.sin(nt);
+  const xa = (4 - 3 * c) * x0 + (sn / n) * xd0 + (2 / n) * (1 - c) * yd0;
+  const ya = 6 * (sn - nt) * x0 + y0 - (2 / n) * (1 - c) * xd0 + ((4 * sn - 3 * nt) / n) * yd0;
+  const err = Math.hypot(s.pos.y - xa, -s.pos.z - ya);
+  check('orbital: free drift matches analytic CW solution', err < 0.5, `after ${T}s: drift=${Math.hypot(s.pos.y - x0, -s.pos.z - y0).toFixed(1)} m, error=${err.toFixed(3)} m`);
+
+  // 前（進行方向）へ噴射すると、上がって、やがて後ろへ下がる
+  const b = new Sim(SCENARIOS.tumble);
+  b.pos.set(0, 0, 1500); b.vel.set(0, 0, 0);
+  b.vel.z -= 0.5; // 進行方向へ 0.5 m/s
+  const z0 = b.pos.z;
+  let maxUp = 0;
+  for (let i = 0; i < 2000 * 120; i++) { b.step(1 / 120, idle({ sas: false })); maxUp = Math.max(maxUp, b.pos.y); }
+  check('orbital: prograde burn rises and ends up behind', maxUp > 100 && b.pos.z > z0,
+    `max rise ${maxUp.toFixed(0)} m, along-track change ${(z0 - b.pos.z).toFixed(0)} m (negative = fell behind)`);
 }
 process.exit(failed ? 1 : 0);

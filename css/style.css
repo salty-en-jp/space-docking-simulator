@@ -77,12 +77,15 @@ button:hover { filter: brightness(1.15); }
 .stats td:last-child { text-align: right; font-family: var(--mono); }
 .reason { line-height: 1.8; color: #dfe; }
 
+@media (max-width: 720px), (max-height: 500px) {
+  #panel .row.minor { display: none; }
+}
 @media (max-width: 720px) {
   #panel { width: 168px; font-size: 11px; top: 40px; right: 8px; padding: 6px 8px; }
   #panel .k { font-size: 10px; }
   #topbar { left: 8px; right: 8px; font-size: 11px; }
   #briefing-toast { left: 8px; max-width: calc(100vw - 190px); font-size: 12px; }
-  #msg { font-size: 15px; top: 44%; }
+  #msg { font-size: 14px; top: 41%; }
   /* 縦画面ではバッジを最小限に */
   #mission-name .mname { display: none; }
   #badges .opt { display: none; }
@@ -101,7 +104,7 @@ button:hover { filter: brightness(1.15); }
   #panel .k { font-size: 10px; }
   #topbar { top: 8px; font-size: 11px; }
   #briefing-toast { top: 36px; font-size: 12px; line-height: 1.5; padding: 6px 10px; max-width: calc(100vw - 200px); }
-  #msg { top: 34%; font-size: 14px; }
+  #msg { top: 27%; font-size: 14px; }
   #touch { padding-left: calc(10px + env(safe-area-inset-left)); padding-right: calc(10px + env(safe-area-inset-right)); }
   #touch .pad { grid-template-columns: repeat(3, 44px); gap: 5px; }
   #touch button { height: 44px; font-size: 14px; }

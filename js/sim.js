@@ -1,5 +1,6 @@
 // ドッキング物理シミュレーション（描画に依存しない純粋なロジック）
 import * as THREE from '../vendor/three.module.min.js';
+import { TumbleTrack } from './tumble.js';
 
 export const PORT_Z = 14;          // ステーション座標系でのドッキングポート面の位置
 export const HUB_R = 4;            // 中央ハブの半径
@@ -112,6 +113,27 @@ export const SCENARIOS = {
     start: { dist: 60, lateral: [4, -3], misalignDeg: 8, drift: [0.04, -0.03, -0.25] },
     tol: { closing: 0.4, lateral: 0.45, align: 3.5, spin: 0.6, phase: 9, rate: 1.5 },
   },
+  tumble: {
+    id: 'tumble',
+    name: '転がる星',
+    title: 'MISSION 07 ／ 転がる軌道ステーション',
+    briefing:
+      '制御を失った軌道ステーション〈ハルシオン〉は、毎分4回転しながら、数分ごとに軸ごとくるりと反転している（ジャニベコフ効果）。' +
+      '1.5km後方から軌道力学に従って接近し、ポートがこちらを向いている「静かな時間」に結合せよ。前に噴射すると、上がって後ろへ下がるので注意。',
+    spinRpm: 4,
+    rollAcc: 0.5,
+    wobbleDeg: 0,
+    wobblePeriod: 60,
+    timeLimit: 0,
+    fuel: 150,
+    farLimit: 5000,
+    // 慣性モーメント [Ix, Iy, Iz]: ポートの軸 Z を中間にして、反転が起きるようにする
+    tumble: { I: [1.0, 2.2, 1.6], perturb: 1e-4, windowDeg: 8 },
+    // 高度約400kmの地球低軌道（周期 約92.6分）
+    orbital: { n: 0.00113 },
+    start: { dist: 1500, lateral: [0, 15], misalignDeg: 5, drift: [0, 0, 0] },
+    tol: { closing: 0.4, lateral: 0.45, align: 3.5, spin: 0.6, phase: 9, rate: 1.5 },
+  },
   dorsalx: {
     id: 'dorsalx',
     name: '母船',
@@ -172,6 +194,16 @@ export class Sim {
     this.omega = scenario.spinRpm * RPM;
     this.dockType = scenario.dock || 'nose';
     this.dock = DOCK_TYPES[this.dockType];
+    // 軌道力学（CW方程式）の平均運動 n [rad/s]。0 なら軌道力学なし
+    this.orbitN = scenario.orbital ? scenario.orbital.n : 0;
+    if (scenario.tumble) {
+      const tb = scenario.tumble;
+      this.track = new TumbleTrack(tb.I, [tb.perturb * this.omega, tb.perturb * this.omega * 0.5, this.omega]);
+      const { w } = this.track.sample(0);
+      this.L0 = new THREE.Vector3(tb.I[0] * w.x, tb.I[1] * w.y, tb.I[2] * w.z).normalize(); // 慣性空間で一定
+      this.windows = []; // ポートが L0 方向を向いている時間帯 [開始, 終了]
+      this.windowScanT = 0;
+    }
     this.reset();
   }
 
@@ -207,7 +239,52 @@ export class Sim {
   }
 
   // ---- ステーションの姿勢 ----
+  // 転がるステーション: 慣性空間の姿勢を、ステーションと一緒に回る座標系（LVLH）へ。
+  // LVLH は慣性空間に対して軌道面の法線まわりに n で回るので、慣性空間で一定の向きは +X まわりに n で回って見える。
+  tumbleQuat(t) {
+    const { q } = this.track.sample(t);
+    return new THREE.Quaternion().setFromAxisAngle(X, this.orbitN * t).multiply(q);
+  }
+  // ステーションの角速度（この座標系で）
+  stationAngVel(t) {
+    if (!this.track) return this.axis(t).multiplyScalar(this.omega);
+    const { w } = this.track.sample(t);
+    return w.applyQuaternion(this.tumbleQuat(t)).addScaledVector(X, this.orbitN);
+  }
+  // 反転の窓（ポートがこちら側を向いている時間）
+  scanWindows(until) {
+    const lim = Math.cos(this.sc.tumble.windowDeg * DEG);
+    const h = 0.25;
+    while (this.windowScanT < until) {
+      const t = this.windowScanT;
+      const z = Z.clone().applyQuaternion(this.track.sample(t).q);
+      const open = z.dot(this.L0) > lim;
+      const last = this.windows[this.windows.length - 1];
+      if (open) {
+        if (last && last[1] >= t - h * 1.5) last[1] = t;
+        else this.windows.push([t, t]);
+      }
+      this.windowScanT += h;
+    }
+  }
+  windowInfo(t = this.t) {
+    if (!this.track) return null;
+    this.scanWindows(t + 400);
+    for (const [s, e] of this.windows) {
+      if (t >= s && t <= e) return { open: true, remaining: e - t, next: 0 };
+      if (s > t) return { open: false, remaining: 0, next: s - t, length: e - s };
+    }
+    return { open: false, remaining: 0, next: Infinity };
+  }
+  // 軌道力学（CW方程式）による見かけの加速度。座標: Y = 地球と反対（R-bar）, -Z = 進行方向（V-bar）, X = 軌道面の法線方向
+  cwAccel(p, v) {
+    const n = this.orbitN;
+    if (!n) return new THREE.Vector3();
+    return new THREE.Vector3(-n * n * p.x, 3 * n * n * p.y - 2 * n * v.z, 2 * n * v.y);
+  }
+
   wobbleQuat(t) {
+    if (this.track) return this.tumbleQuat(t);
     const th = this.sc.wobbleDeg * DEG;
     if (th === 0) return new THREE.Quaternion();
     const phi = (2 * Math.PI * t) / this.sc.wobblePeriod;
@@ -217,6 +294,7 @@ export class Sim {
     return a.multiply(b).multiply(c);
   }
   stationQuat(t) {
+    if (this.track) return this.tumbleQuat(t);
     const spin = new THREE.Quaternion().setFromAxisAngle(Z, this.omega * t);
     return this.wobbleQuat(t).multiply(spin);
   }
@@ -340,7 +418,7 @@ export class Sim {
     // 回転ロック: 回転差が小さく、ロール入力が無いとき、ステーションと同じ回転数を保つ
     this.spinLockState = 'off';
     if (c.spinLock) {
-      const err = this.omega - this.w.dot(a);
+      const err = this.stationAngVel(this.t).dot(a) - this.w.dot(a);
       if (manualSpin || c.rotStop) {
         this.spinLockState = 'manual';
       } else if (hasFuel && Math.abs(err) < SPIN_LOCK_CAPTURE_RPM * RPM) {
@@ -361,7 +439,7 @@ export class Sim {
     this.accBody.copy(acc).applyQuaternion(qi);
     this.angBody.copy(ang).applyQuaternion(qi);
 
-    this.vel.addScaledVector(acc, dt);
+    this.vel.addScaledVector(acc, dt).addScaledVector(this.cwAccel(this.pos, this.vel), dt); // 噴射 + 軌道力学
     this.pos.addScaledVector(this.vel, dt);
     this.w.addScaledVector(ang, dt);
     const wl = this.w.length();
@@ -375,7 +453,7 @@ export class Sim {
     if (this.status === 'flying') {
       if (this.sc.timeLimit && this.t >= this.sc.timeLimit) {
         this.fail('failed', 'ステーションが大気圏に突入した');
-      } else if (this.pos.length() > 600) {
+      } else if (this.pos.length() > (this.sc.farLimit || 600)) {
         this.fail('failed', 'ステーションから離れすぎた');
       }
     }
@@ -419,7 +497,11 @@ export class Sim {
     const vlat = vrel.clone().addScaledVector(a, -vrel.dot(a));
     const align = f.angleTo(a.clone().negate()) / DEG;
     const shipSpin = this.w.dot(a);
-    const wperp = this.w.clone().addScaledVector(a, -shipSpin).length();
+    // ステーションに対する相対的な回転（ステーション自体の首振りも差し引く）
+    const wS = this.stationAngVel(t);
+    const targetSpin = wS.dot(a);
+    const wrel = this.w.clone().sub(wS);
+    const wperp = wrel.addScaledVector(a, -wrel.dot(a)).length();
     const phase = signedAngleAbout(u, this.markerDir(t), a) / DEG;
     return {
       a, P, vP, f, u, right, nose,
@@ -435,14 +517,16 @@ export class Sim {
       vlatY: vlat.dot(u),
       closing,
       align,
-      targetRpm: this.omega / RPM,
+      targetRpm: targetSpin / RPM,
       shipRpm: shipSpin / RPM,
-      dSpinRpm: (shipSpin - this.omega) / RPM,
+      dSpinRpm: (shipSpin - targetSpin) / RPM,
       rateDeg: wperp / DEG,
       phase,
       fuel: this.fuel / this.fuelMax,
       hull: this.hull,
       spinLock: this.spinLockState,
+      window: this.windowInfo(t),
+      centerDist: this.pos.length(),
       timeLeft: this.sc.timeLimit ? Math.max(0, this.sc.timeLimit - t) : null,
     };
   }
@@ -510,7 +594,7 @@ export class Sim {
     const Sq = this.stationQuat(this.t);
     this.pos.copy(this.relPos).applyQuaternion(Sq);
     this.q.copy(Sq).multiply(this.relQ);
-    this.w.copy(this.axis(this.t)).multiplyScalar(this.omega);
+    this.w.copy(this.stationAngVel(this.t));
     this.accBody.set(0, 0, 0);
     this.angBody.set(0, 0, 0);
   }

@@ -17,11 +17,14 @@ export class HUD {
       ['time', '経過時間'], ['left', '残り時間'], ['range', '距離'], ['closing', '接近速度'],
       ['lateral', '横ずれ'], ['align', '軸の角度'], ['target', '目標の回転'], ['ship', '自船の回転'],
       ['spin', '回転差'], ['phase', 'マーカー'], ['rate', '首振り'], ['fuel', '推進剤'], ['hull', '船体'],
+      ['state', 'ステーション'], ['window', '窓'], ['center', '中心まで'], ['warp', '時間加速'],
     ];
     panel.innerHTML = '';
+    // スマホなど小さい画面では隠す補助的な行
+    const minor = new Set(['time', 'target', 'ship', 'rate', 'hull', 'center']);
     for (const [k, label] of defs) {
       const row = document.createElement('div');
-      row.className = 'row';
+      row.className = minor.has(k) ? 'row minor' : 'row';
       row.innerHTML = `<span class="k">${label}</span><span class="v"></span>`;
       panel.appendChild(row);
       this.rows[k] = { row, v: row.querySelector('.v') };
@@ -118,6 +121,7 @@ export class HUD {
     this.drawSpinGauge(c, gx - 170, gy, tm, tol);
     this.drawPhaseDial(c, gx + 20, gy, tm, tol);
     this.drawLateralBox(c, gx + 110, gy, tm, tol);
+    if (sim.orbitN) this.drawOrbitMap(c, sim, tm, opts);
 
     // ---- 右パネル（DOM、10Hz更新） ----
     const now = performance.now();
@@ -142,6 +146,18 @@ export class HUD {
       this.setRow('rate', `${f1(tm.rateDeg)}°/s`, lvl(tm.rateDeg, tol.rate));
       this.setRow('fuel', `${Math.round(tm.fuel * 100)} %`, tm.fuel > 0.3 ? 'ok' : tm.fuel > 0.1 ? 'warn' : 'bad');
       this.setRow('hull', `${Math.round(tm.hull * 100)} %`, tm.hull > 0.7 ? 'ok' : tm.hull > 0.35 ? 'warn' : 'bad');
+      // 転がるステーション・軌道力学のステージだけ
+      const w = tm.window;
+      if (w) {
+        const facing = w.open;
+        const awayish = !facing && tm.axial < -5;
+        this.setRow('state', facing ? '静穏・こちら向き' : awayish ? '背中向き' : '反転中', facing ? 'ok' : awayish ? 'warn' : 'bad');
+        this.setRow('window', facing ? `残り ${w.remaining.toFixed(0)} 秒` : `次まで ${Math.min(999, w.next).toFixed(0)} 秒`, facing ? (w.remaining > 40 ? 'ok' : 'warn') : '');
+        this.setRow('center', `${tm.centerDist.toFixed(0)} m`, tm.centerDist < 50 && !facing ? 'bad' : '');
+      } else {
+        ['state', 'window', 'center'].forEach((k) => this.setRow(k, null));
+      }
+      this.setRow('warp', sim.orbitN ? `×${opts.warp || 1}` : null);
     }
   }
 
@@ -250,5 +266,54 @@ export class HUD {
     c.fillStyle = col;
     c.beginPath(); c.arc(px, py, 3.5, 0, Math.PI * 2); c.fill();
     this.label(c, '横ずれ（3秒予測）', x - 10, y - 34, ok ? OK : DIM);
+  }
+
+  // 軌道図（横から見た図）: 横 = 進行方向（V-bar）、縦 = 地球と反対向き（R-bar）。
+  // 噴射しなかった場合の予測軌道を、CW方程式の解析解で半周回ぶん描く。
+  drawOrbitMap(c, sim, tm, opts) {
+    const small = this.w < 720 || this.h < 500;
+    const W = small ? 150 : 210, H = small ? 100 : 140;
+    const x0 = small ? 8 : 16, y0 = opts.mapTop;
+    c.fillStyle = 'rgba(4,14,10,0.72)';
+    c.fillRect(x0, y0, W, H);
+    c.strokeStyle = DIM;
+    c.strokeRect(x0, y0, W, H);
+    const n = sim.orbitN;
+    // CW座標: x = 上（Y）, y = 進行方向（-Z）
+    const px = sim.pos.y, py = -sim.pos.z, vx = sim.vel.y, vy = -sim.vel.z;
+    const pts = [];
+    const Tm = Math.PI / n; // 半周回
+    for (let i = 0; i <= 90; i++) {
+      const t = (i / 90) * Tm, nt = n * t, cs = Math.cos(nt), sn = Math.sin(nt);
+      const x = (4 - 3 * cs) * px + (sn / n) * vx + (2 / n) * (1 - cs) * vy;
+      const y = 6 * (sn - nt) * px + py - (2 / n) * (1 - cs) * vx + ((4 * sn - 3 * nt) / n) * vy;
+      pts.push([y, x]);
+    }
+    const span = Math.max(120, Math.hypot(px, py) * 1.3, ...pts.slice(0, 45).map(([a, b]) => Math.hypot(a, b) * 0.8));
+    const sc = Math.min(W, H * 1.4) / 2 / span;
+    const cx = x0 + W / 2, cy = y0 + H / 2;
+    c.save();
+    c.beginPath(); c.rect(x0, y0, W, H); c.clip();
+    // 軸と、反転中に危ない範囲（中心から約46m）
+    c.strokeStyle = 'rgba(124,255,178,0.2)';
+    c.beginPath(); c.moveTo(x0, cy); c.lineTo(x0 + W, cy); c.moveTo(cx, y0); c.lineTo(cx, y0 + H); c.stroke();
+    c.strokeStyle = 'rgba(255,92,92,0.5)';
+    c.beginPath(); c.arc(cx, cy, Math.max(2, 46 * sc), 0, Math.PI * 2); c.stroke();
+    // 予測軌道
+    c.strokeStyle = 'rgba(124,255,178,0.85)';
+    c.beginPath();
+    pts.forEach(([a, b], i) => (i ? c.lineTo(cx + a * sc, cy - b * sc) : c.moveTo(cx + a * sc, cy - b * sc)));
+    c.stroke();
+    // ステーションと自船
+    c.fillStyle = '#e8f0ff';
+    c.fillRect(cx - 2, cy - 2, 4, 4);
+    c.fillStyle = WARN;
+    c.beginPath(); c.arc(cx + py * sc, cy - px * sc, 3.5, 0, Math.PI * 2); c.fill();
+    c.restore();
+    c.font = '10px "Zen Kaku Gothic New", sans-serif';
+    c.fillStyle = DIM;
+    c.fillText('進行方向 →', x0 + W - 62, cy - 4);
+    c.fillText('↑ 地球と反対', cx + 4, y0 + 12);
+    c.fillText(`軌道図（横から・半径 ${span.toFixed(0)} m）`, x0 + 4, y0 + H - 5);
   }
 }
